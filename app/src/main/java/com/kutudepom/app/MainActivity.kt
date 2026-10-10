@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.content.*
 import android.database.sqlite.*
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.*
 import android.widget.*
 import java.io.File
@@ -82,7 +84,7 @@ class MainActivity: androidx.activity.ComponentActivity() {
     }
     private fun toast(s:String)=Toast.makeText(this,s,Toast.LENGTH_LONG).show()
     private fun screen(title:String) {
-        root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(24,20,24,16); setBackgroundColor(Color.rgb(248,249,252)) }
+        root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(18),dp(16),dp(18),dp(24)); setBackgroundColor(Color.rgb(246,248,252)) }
         val scroll=ScrollView(this).apply { addView(root) }
         setContentView(scroll)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(scroll) { v,insets ->
@@ -92,15 +94,17 @@ class MainActivity: androidx.activity.ComponentActivity() {
         androidx.core.view.ViewCompat.requestApplyInsets(scroll)
         label(title,24)
     }
+    private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
+    private fun rounded(color:Int, radius:Int=18)=GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat() }
     private fun label(s:String, size:Int=17) {
-        root.addView(TextView(this).apply { text=s; textSize=size.toFloat(); setTextColor(Color.rgb(30,38,55)); setPadding(0,12,0,12) })
+        root.addView(TextView(this).apply { text=s; textSize=size.toFloat(); setTextColor(Color.rgb(30,38,55)); setPadding(dp(2),dp(12),0,dp(12)); if(size>=20) setTypeface(null,Typeface.BOLD) })
     }
     private fun button(s:String, click:()->Unit) {
-        root.addView(Button(this).apply { text=s; setOnClickListener { click() } })
+        root.addView(Button(this).apply { text=s; isAllCaps=false; textSize=15f; setTextColor(Color.rgb(31,51,80)); background=rounded(Color.WHITE,18); elevation=dp(2).toFloat(); setPadding(dp(14),dp(10),dp(14),dp(10)); setOnClickListener { click() } }, LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(10) })
     }
     private fun input(hint:String, value:String=""):EditText {
         val e=EditText(this).apply { this.hint=hint; setText(value); setSingleLine(true) }
-        root.addView(e)
+        e.background=rounded(Color.WHITE,14); e.setPadding(dp(16),dp(12),dp(16),dp(12)); root.addView(e,LinearLayout.LayoutParams(-1,dp(56)).apply { bottomMargin=dp(12) })
         return e
     }
     private fun home(query:String="") {
@@ -148,11 +152,9 @@ class MainActivity: androidx.activity.ComponentActivity() {
         db.readableDatabase.rawQuery("SELECT id,name,qty,note,photo FROM items WHERE box_id=? ORDER BY name",arrayOf(id.toString())).use { cur ->
             if(cur.count==0) label("Bu kutu boş.")
             while(cur.moveToNext()) {
-                val itemId=cur.getLong(0);val name=cur.getString(1);val qty=cur.getInt(2)
+                val itemId=cur.getLong(0);val name=cur.getString(1)
                 cur.getString(4)?.let { photo -> showPhoto(photo) }
-                button("$name  × $qty") { itemForm(id,itemId) }
-                button("− 1 · $name") { if(!db.changeStock(itemId,-1)) toast("Stok sıfırın altına inemez"); showBox(id) }
-                button("＋ 1 · $name") { if(!db.changeStock(itemId,1)) toast("Stok sınırına ulaşıldı"); showBox(id) }
+                button("📦  $name     ›") { itemForm(id,itemId) }
             }
         }
         button("Ana sayfa") { home() }
@@ -166,19 +168,16 @@ class MainActivity: androidx.activity.ComponentActivity() {
         }
         screen(if(itemId==null)"Ürün ekle" else "Ürünü düzenle")
         val name=input("Ürün adı",state?.getString("draftName") ?: oldName); nameInput=name
-        val qty=input("Adet",state?.getString("draftQty") ?: oldQty.toString()).apply { inputType=2 }; qtyInput=qty
+        qtyInput=null
         val note=input("Not / açıklama",state?.getString("draftNote") ?: oldNote); noteInput=note
         if(state!=null) currentPhoto=state.getString("photo")
         photoLabel=TextView(this).apply { text=if(currentPhoto==null) "Fotoğraf yok" else "Fotoğraf seçildi ✓" }; root.addView(photoLabel)
         currentPhoto?.let { showPhoto(it) }
         button("Galeriden fotoğraf seç") { photoPicker.launch(arrayOf("image/*")) }
         button("Fotoğrafı kaldır") { cleanDraftPhoto(); currentPhoto=null; photoLabel?.text="Fotoğraf yok" }
-        button("− 1") { qty.setText(((qty.text.toString().toIntOrNull()?:0)-1).coerceAtLeast(0).toString()) }
-        button("＋ 1") { val n=qty.text.toString().toIntOrNull() ?: 0; if(n<Int.MAX_VALUE) qty.setText((n+1).toString()) else toast("Stok sınırına ulaşıldı") }
         button("Kaydet") {
             if(name.text.isBlank()){toast("Ürün adı gerekli");return@button}
-            val count=qty.text.toString().toIntOrNull()
-            if(count==null || count<0) { toast("Geçerli bir adet girin (0–2147483647)"); return@button }
+            val count=oldQty
             val values=android.content.ContentValues().apply {
                 put("photo",currentPhoto)
                 put("name",name.text.toString().trim());put("qty",count)
@@ -221,7 +220,7 @@ class MainActivity: androidx.activity.ComponentActivity() {
                 if(!text.lowercase(java.util.Locale.forLanguageTag("tr")).contains(key)) continue
                 found++
                 val id=c.getLong(2)
-                button("${c.getString(0)} × ${c.getInt(1)}\n${c.getString(4)} / ${c.getString(5)} / ${c.getString(6)} / ${c.getString(3)}") { showBox(id) }
+                button("${c.getString(0)}\n${c.getString(4)} / ${c.getString(5)} / ${c.getString(6)} / ${c.getString(3)}") { showBox(id) }
             }
         }
         if(found==0) label("Ürün bulunamadı.")
