@@ -3,18 +3,30 @@ package com.kutudepom.app
 import android.app.*
 import android.os.Bundle
 import android.content.*
-import android.database.sqlite.*
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.view.*
 import android.widget.*
 import java.io.File
 import androidx.core.content.FileProvider
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import android.content.res.ColorStateList
+import android.text.Editable
+import android.text.TextWatcher
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textview.MaterialTextView
+import com.google.android.material.color.MaterialColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class MainActivity: androidx.activity.ComponentActivity() {
+class MainActivity: AppCompatActivity() {
     private lateinit var db: Store
     private lateinit var root: LinearLayout
     private var selectedBox: Long?=null
@@ -23,10 +35,42 @@ class MainActivity: androidx.activity.ComponentActivity() {
     private var currentPhoto: String?=null
     private var originalPhoto: String?=null
     private var nameInput: EditText?=null
-    private var qtyInput: EditText?=null
     private var noteInput: EditText?=null
     private var searchInput: EditText?=null
     private var photoLabel: TextView?=null
+    private lateinit var manualStorage:ManualStorage
+    private lateinit var manualList:LinearLayout
+    private var pendingManuals=mutableListOf<Manual>()
+    private var removedManuals=mutableSetOf<Long>()
+    private var editingSession=java.util.UUID.randomUUID().toString()
+    private var importingManuals=false
+    private var manualButton:MaterialButton?=null
+    private var saveButton:MaterialButton?=null
+    private var boxInputs:List<EditText> = emptyList()
+    private val documentPicker=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if(uris.isNotEmpty() && page=="item") {
+            val session=editingSession
+            importingManuals=true; manualButton?.isEnabled=false; saveButton?.isEnabled=false
+            lifecycleScope.launch {
+                val imported=mutableListOf<Manual>(); val errors=mutableListOf<String>(); var attached=false
+                try {
+                    withContext(Dispatchers.IO) {
+                        uris.forEach { uri ->
+                            try { imported.add(manualStorage.importUri(uri)) }
+                            catch(ex:Exception) { errors.add(ex.message ?: "Belge kopyalanamadı.") }
+                        }
+                    }
+                    if(page=="item" && editingSession==session) {
+                        pendingManuals.addAll(imported); attached=true; renderManuals()
+                        if(errors.isNotEmpty()) toast(errors.joinToString("\n"))
+                    }
+                } finally {
+                    if(!attached) imported.forEach { manualStorage.remove(it) }
+                    importingManuals=false; manualButton?.isEnabled=true; saveButton?.isEnabled=true
+                }
+            }
+        }
+    }
     private val photoPicker=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if(uri!=null && page=="item") {
             var file: File?=null
@@ -58,9 +102,14 @@ class MainActivity: androidx.activity.ComponentActivity() {
         out.putString("page",page); out.putLong("box",selectedBox ?: 0); out.putLong("item",editingItem ?: 0)
         out.putString("query",searchInput?.text?.toString())
         if(page=="item") {
-            out.putString("draftName",nameInput?.text?.toString()); out.putString("draftQty",qtyInput?.text?.toString())
+            out.putString("draftName",nameInput?.text?.toString())
             out.putString("draftNote",noteInput?.text?.toString()); out.putString("photo",currentPhoto)
+            out.putParcelableArrayList("manuals",ArrayList(pendingManuals.map { m -> Bundle().apply {
+                putString("name",m.name); putString("stored",m.storedName); putString("mime",m.mime); putLong("size",m.size)
+            } }))
+            out.putLongArray("removedManuals",removedManuals.toLongArray())
         }
+        if(page=="newBox" || page=="editBox") out.putStringArrayList("boxDraft",ArrayList(boxInputs.map { it.text.toString() }))
         super.onSaveInstanceState(out)
     }
     override fun onDestroy() { db.close(); super.onDestroy() }
@@ -71,21 +120,30 @@ class MainActivity: androidx.activity.ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         db=Store(this)
+        manualStorage=ManualStorage(this)
         onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if(page=="home") finish() else home() }
+            override fun handleOnBackPressed() { if(page=="home") finish() else if(page=="item") showBox(selectedBox ?: 0) else home() }
         })
         val state=savedInstanceState
         when(state?.getString("page")) {
             "item" -> itemForm(state.getLong("box"),state.getLong("item").takeIf { it>0 },state)
             "box" -> showBox(state.getLong("box"))
+            "newBox" -> newBox(state=state)
+            "editBox" -> editBox(state.getLong("box"),state)
+            "search" -> searchItems(state.getString("query") ?: "")
             else -> home(state?.getString("query") ?: "")
         }
+        if(savedInstanceState==null) manualStorage.cleanOrphans(db.manualFiles())
         File(filesDir,"photos").listFiles()?.filter { !db.photoInUse(it.name) && it.name!=currentPhoto }?.forEach { it.delete() }
     }
     private fun toast(s:String)=Toast.makeText(this,s,Toast.LENGTH_LONG).show()
+    private fun color(attr:Int)=MaterialColors.getColor(this,attr,"KutuDepom")
+    private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
+    private fun column()=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
+    private fun space(parent:LinearLayout=root) { parent.addView(Space(this),LinearLayout.LayoutParams(1,dp(12))) }
     private fun screen(title:String) {
-        root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(18),dp(16),dp(18),dp(24)); setBackgroundColor(Color.rgb(246,248,252)) }
-        val scroll=ScrollView(this).apply { addView(root) }
+        root=column().apply { setPadding(dp(20),dp(16),dp(20),dp(24)); setBackgroundColor(color(com.google.android.material.R.attr.colorSurface)) }
+        val scroll=ScrollView(this).apply { addView(root); isFillViewport=true }
         setContentView(scroll)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(scroll) { v,insets ->
             val bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.ime())
@@ -94,97 +152,167 @@ class MainActivity: androidx.activity.ComponentActivity() {
         androidx.core.view.ViewCompat.requestApplyInsets(scroll)
         label(title,24)
     }
-    private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
-    private fun rounded(color:Int, radius:Int=18)=GradientDrawable().apply { setColor(color); cornerRadius=dp(radius).toFloat() }
-    private fun label(s:String, size:Int=17) {
-        root.addView(TextView(this).apply { text=s; textSize=size.toFloat(); setTextColor(Color.rgb(30,38,55)); setPadding(dp(2),dp(12),0,dp(12)); if(size>=20) setTypeface(null,Typeface.BOLD) })
+    private fun text(s:String,size:Int=17)=MaterialTextView(this).apply {
+        text=s
+        setTextAppearance(when {
+            size>=24 -> com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall
+            size>=20 -> com.google.android.material.R.style.TextAppearance_Material3_TitleLarge
+            else -> com.google.android.material.R.style.TextAppearance_Material3_BodyLarge
+        })
+        setTextColor(color(com.google.android.material.R.attr.colorOnSurface))
+        setPadding(0,dp(8),0,dp(8))
     }
-    private fun button(s:String, click:()->Unit) {
-        root.addView(Button(this).apply { text=s; isAllCaps=false; textSize=15f; setTextColor(Color.rgb(31,51,80)); background=rounded(Color.WHITE,18); elevation=dp(2).toFloat(); setPadding(dp(14),dp(10),dp(14),dp(10)); setOnClickListener { click() } }, LinearLayout.LayoutParams(-1,dp(58)).apply { bottomMargin=dp(10) })
+    private fun label(s:String,size:Int=17) { root.addView(text(s,size)) }
+    private fun button(s:String,parent:LinearLayout=root,secondary:Boolean=false,danger:Boolean=false,click:()->Unit):MaterialButton {
+        val button=MaterialButton(this).apply {
+            text=s; isAllCaps=false; minHeight=dp(48); cornerRadius=dp(16)
+            if(secondary) {
+                backgroundTintList=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorSurface))
+                strokeWidth=dp(1); strokeColor=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorOutline))
+                setTextColor(color(if(danger) com.google.android.material.R.attr.colorError else androidx.appcompat.R.attr.colorPrimary))
+            } else if(danger) {
+                backgroundTintList=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorError))
+                setTextColor(color(com.google.android.material.R.attr.colorOnError))
+            }
+            setOnClickListener { click() }
+        }
+        parent.addView(button,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+        return button
     }
-    private fun input(hint:String, value:String=""):EditText {
-        val e=EditText(this).apply { this.hint=hint; setText(value); setSingleLine(true) }
-        e.background=rounded(Color.WHITE,14); e.setPadding(dp(16),dp(12),dp(16),dp(12)); root.addView(e,LinearLayout.LayoutParams(-1,dp(56)).apply { bottomMargin=dp(12) })
-        return e
+    private fun input(hint:String,value:String="",parent:LinearLayout=root,multiline:Boolean=false):EditText {
+        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint }
+        val edit=TextInputEditText(container.context).apply {
+            this.hint=hint; setText(value); setSingleLine(!multiline)
+            if(multiline) { minLines=3; maxLines=6; gravity=Gravity.TOP }
+        }
+        container.addView(edit,LinearLayout.LayoutParams(-1,-2))
+        parent.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(14) })
+        return edit
+    }
+    private fun section(title:String,subtitle:String?=null):LinearLayout {
+        space()
+        val card=MaterialCardView(this).apply {
+            radius=dp(20).toFloat(); cardElevation=0f
+            setCardBackgroundColor(color(com.google.android.material.R.attr.colorSurfaceVariant))
+        }
+        val content=column().apply { setPadding(dp(16),dp(12),dp(16),dp(12)) }
+        content.addView(text(title,20)); subtitle?.let { content.addView(text(it)) }
+        card.addView(content); root.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+        return content
+    }
+    private fun searchControls(query:String) {
+        val search=input("Ürün, not veya konum ara...",query); searchInput=search
+        val action=button("Ara") { searchItems(search.text.toString()) }
+        fun update() { action.isEnabled=search.text.isNotBlank() }
+        search.addTextChangedListener(object:TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { update() }
+            override fun afterTextChanged(s:Editable?) {}
+        })
+        update()
+    }
+    private fun cleanDraft() {
+        cleanDraftPhoto(); pendingManuals.forEach { manualStorage.remove(it) }
+        pendingManuals.clear(); removedManuals.clear(); editingSession=java.util.UUID.randomUUID().toString()
     }
     private fun home(query:String="") {
-        cleanDraftPhoto(); currentPhoto=null; page="home"; selectedBox=null
+        cleanDraft(); currentPhoto=null; page="home"; selectedBox=null
         screen("📦 KutuDepom")
         button("＋ Yeni kutu") { newBox() }
-        button("Oda → dolap → raf → kutu") { browseLocations() }
         button("▣ QR kod tara") { scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Kutunun QR kodunu okut").setBeepEnabled(false)) }
-        val search=input("Ürün, not veya konum ara...",query); searchInput=search
-        button("Ara") { searchItems(search.text.toString()) }
+        searchControls(query)
         label("Kutular",20)
         val boxes=db.boxes()
         if(boxes.isEmpty()) label("Henüz kutu yok. İlk kutunu oluştur.")
         boxes.forEach { (id,name)->button(name) { showBox(id) } }
     }
-    private fun newBox(roomName:String="", cupboardName:String="", shelfName:String="") {
+    private fun newBox(roomName:String="", cupboardName:String="", shelfName:String="",state:Bundle?=null) {
         page="newBox"
         screen("Yeni kutu")
-        val name=input("Kutu adı (örn. Kutu 1)")
-        val room=locationInput("Oda (örn. Proje odası)","room",roomName) { emptyMap() }
-        val cupboard=locationInput("Dolap","cupboard",cupboardName) { mapOf("room" to room.text.toString()) }
-        val shelf=locationInput("Raf","shelf",shelfName) { mapOf("room" to room.text.toString(),"cupboard" to cupboard.text.toString()) }
+        val draft=state?.getStringArrayList("boxDraft")
+        label("Oda, dolap ve raf isteğe bağlıdır.")
+        val name=input("Kutu adı (örn. Kutu 1)",draft?.getOrNull(0) ?: "")
+        val room=locationInput("Oda (örn. Proje odası)","room",draft?.getOrNull(1) ?: roomName) { emptyMap() }
+        val cupboard=locationInput("Dolap","cupboard",draft?.getOrNull(2) ?: cupboardName) { mapOf("room" to room.text.toString()) }
+        val shelf=locationInput("Raf","shelf",draft?.getOrNull(3) ?: shelfName) { mapOf("room" to room.text.toString(),"cupboard" to cupboard.text.toString()) }
+        boxInputs=listOf(name,room,cupboard,shelf)
         button("Kaydet") {
-            if(listOf(name,room,cupboard,shelf).any { it.text.isBlank() }) { toast("Oda, dolap, raf ve kutu adı gerekli"); return@button }
+            if(name.text.isBlank()) { name.error="Kutu adı gerekli"; return@button }
             val values=android.content.ContentValues().apply {
                 put("name",name.text.toString().trim());put("room",room.text.toString().trim())
                 put("cupboard",cupboard.text.toString().trim());put("shelf",shelf.text.toString().trim())
             }
-            val id=db.writableDatabase.insert("boxes",null,values)
+            val id=db.writableDatabase.insertOrThrow("boxes",null,values)
             showBox(id)
         }
         button("Geri") { home() }
     }
     private fun showBox(id:Long) {
-        cleanDraftPhoto(); currentPhoto=null; page="box"; selectedBox=id
-        val c=db.readableDatabase.rawQuery("SELECT name,room,cupboard,shelf FROM boxes WHERE id=?",arrayOf(id.toString()))
-        if(!c.moveToFirst()) { c.close(); toast("Bu kutu cihazda bulunamadı"); home();return }
-        val title=c.getString(0);val location="${c.getString(1)} / ${c.getString(2)} / ${c.getString(3)}";c.close()
-        screen("📦 $title")
-        label(location)
-        button("QR etiketi göster / paylaş") { qrLabel(id,title,location) }
-        button("Kutu konumunu düzenle") { editBox(id) }
-        button("Boş kutuyu sil") { deleteBox(id) }
-        button("＋ Ürün ekle") { itemForm(id,null) }
-        db.readableDatabase.rawQuery("SELECT id,name,qty,note,photo FROM items WHERE box_id=? ORDER BY name",arrayOf(id.toString())).use { cur ->
-            if(cur.count==0) label("Bu kutu boş.")
-            while(cur.moveToNext()) {
-                val itemId=cur.getLong(0);val name=cur.getString(1)
-                cur.getString(4)?.let { photo -> showPhoto(photo) }
-                button("📦  $name     ›") { itemForm(id,itemId) }
+        cleanDraft(); currentPhoto=null; page="box"; selectedBox=id
+        val box=db.readableDatabase.rawQuery("SELECT name,room,cupboard,shelf FROM boxes WHERE id=?",arrayOf(id.toString())).use { c ->
+            if(!c.moveToFirst()) null else List(4) { c.getString(it) }
+        }
+        if(box==null) { toast("Bu kutu cihazda bulunamadı"); home(); return }
+        val title=box[0]; val location=box.drop(1).filter { it.isNotBlank() }.joinToString(" → ")
+        screen(title)
+        if(location.isNotBlank()) label(location)
+        label("Ürünler",20)
+        db.readableDatabase.rawQuery("SELECT id,name,note,photo FROM items WHERE box_id=? ORDER BY name",arrayOf(id.toString())).use { c ->
+            if(c.count==0) label("Bu kutu boş. Aşağıdaki bölümden ürün ekleyin.")
+            while(c.moveToNext()) {
+                val itemId=c.getLong(0); val name=c.getString(1)
+                productCard(name,c.getString(2),c.getString(3)) { itemForm(id,itemId) }
             }
         }
-        button("Ana sayfa") { home() }
+        val actions=section("Kutu işlemleri","Ürün ekleyin veya kutu ayarlarını yönetin.")
+        button("＋ Ürün ekle",actions) { itemForm(id,null) }
+        button("QR etiketi göster / paylaş",actions,secondary=true) { qrLabel(id,title,location) }
+        button("Kutu konumunu düzenle",actions,secondary=true) { editBox(id) }
+        button("Boş kutuyu sil",actions,secondary=true,danger=true) { deleteBox(id) }
+        button("Ana sayfa",secondary=true) { home() }
+    }
+    private fun productCard(name:String,note:String,photo:String?,open:()->Unit) {
+        val card=MaterialCardView(this).apply {
+            radius=dp(16).toFloat(); cardElevation=dp(1).toFloat(); isClickable=true; isFocusable=true
+            contentDescription="$name, ürün detayını aç"; setOnClickListener { open() }
+        }
+        val content=column().apply { setPadding(dp(16),dp(12),dp(16),dp(12)) }
+        photo?.let { content.addView(photoView(it,120)) }
+        content.addView(text(name,20))
+        if(note.isNotBlank()) content.addView(text(note))
+        card.addView(content); root.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
     }
     private fun itemForm(boxId:Long, itemId:Long?, state:Bundle?=null) {
-        page="item"; selectedBox=boxId; editingItem=itemId
+        cleanDraft(); page="item"; selectedBox=boxId; editingItem=itemId
         currentPhoto=null; originalPhoto=null
+        state?.getParcelableArrayList<Bundle>("manuals")?.forEach { m -> pendingManuals.add(Manual(name=m.getString("name") ?: "Belge",storedName=m.getString("stored") ?: "",mime=m.getString("mime") ?: "application/octet-stream",size=m.getLong("size"))) }
+        removedManuals.addAll(state?.getLongArray("removedManuals")?.toSet() ?: emptySet())
         var oldName="";var oldQty=1;var oldNote=""
         if(itemId!=null) db.readableDatabase.rawQuery("SELECT name,qty,note,photo FROM items WHERE id=?",arrayOf(itemId.toString())).use { c ->
             if(c.moveToFirst()){oldName=c.getString(0);oldQty=c.getInt(1);oldNote=c.getString(2);originalPhoto=c.getString(3);currentPhoto=originalPhoto}
         }
         screen(if(itemId==null)"Ürün ekle" else "Ürünü düzenle")
         val name=input("Ürün adı",state?.getString("draftName") ?: oldName); nameInput=name
-        qtyInput=null
-        val note=input("Not / açıklama",state?.getString("draftNote") ?: oldNote); noteInput=note
+        val note=input("Not / açıklama",state?.getString("draftNote") ?: oldNote,multiline=true); noteInput=note
         if(state!=null) currentPhoto=state.getString("photo")
-        photoLabel=TextView(this).apply { text=if(currentPhoto==null) "Fotoğraf yok" else "Fotoğraf seçildi ✓" }; root.addView(photoLabel)
+        photoLabel=MaterialTextView(this).apply { text=if(currentPhoto==null) "Fotoğraf yok" else "Fotoğraf seçildi ✓" }; root.addView(photoLabel)
         currentPhoto?.let { showPhoto(it) }
         button("Galeriden fotoğraf seç") { photoPicker.launch(arrayOf("image/*")) }
         button("Fotoğrafı kaldır") { cleanDraftPhoto(); currentPhoto=null; photoLabel?.text="Fotoğraf yok" }
-        button("Kaydet") {
-            if(name.text.isBlank()){toast("Ürün adı gerekli");return@button}
+        manualSection()
+        saveButton=button("Kaydet") {
+            if(importingManuals) { toast("Belge kopyalama tamamlanana kadar bekleyin."); return@button }
+            if(name.text.isBlank()){name.error="Ürün adı gerekli";return@button}
             val count=oldQty
             val values=android.content.ContentValues().apply {
                 put("photo",currentPhoto)
                 put("name",name.text.toString().trim());put("qty",count)
                 put("note",note.text.toString());put("box_id",boxId)
             }
-            if(itemId==null) db.writableDatabase.insert("items",null,values)
-            else db.writableDatabase.update("items",values,"id=?",arrayOf(itemId.toString()))
+            val removedFiles=itemId?.let { db.manuals(it).filter { m -> m.id in removedManuals } } ?: emptyList()
+            try { db.saveItem(itemId,values,pendingManuals,removedManuals) }
+            catch(ex:Exception) { toast("Ürün kaydedilemedi. Lütfen tekrar deneyin."); return@button }
+            pendingManuals.clear(); removedManuals.clear(); removedFiles.forEach { manualStorage.remove(it) }
             originalPhoto?.takeIf { it!=currentPhoto && !db.photoInUse(it) }?.let { File(filesDir,"photos/$it").delete() }
             showBox(boxId)
         }
@@ -192,42 +320,44 @@ class MainActivity: androidx.activity.ComponentActivity() {
             button("Başka kutuya taşı") {
                 val choices=db.boxes().filter { it.first!=boxId }
                 if(choices.isEmpty()) { toast("Başka kutu oluşturmalısın");return@button }
-                AlertDialog.Builder(this).setTitle("Hedef kutu seç")
+                MaterialAlertDialogBuilder(this).setTitle("Hedef kutu seç")
                     .setItems(choices.map { it.second }.toTypedArray()) { _,which->
                         val values=android.content.ContentValues().apply { put("box_id",choices[which].first) }
                         db.writableDatabase.update("items",values,"id=?",arrayOf(itemId.toString()))
                         showBox(choices[which].first)
                     }.show()
             }
-            button("Ürünü sil") {
-                AlertDialog.Builder(this).setMessage("Ürün silinsin mi?")
-                    .setPositiveButton("Sil") { _,_->db.writableDatabase.delete("items","id=?",arrayOf(itemId.toString()));originalPhoto?.let { if(!db.photoInUse(it)) File(filesDir,"photos/$it").delete() };showBox(boxId)}
+            button("Ürünü sil",secondary=true,danger=true) {
+                MaterialAlertDialogBuilder(this).setMessage("Ürün silinsin mi?")
+                    .setPositiveButton("Sil") { _,_->deleteProduct(itemId); showBox(boxId)}
                     .setNegativeButton("Vazgeç",null).show()
             }
         }
         button("Geri") { showBox(boxId) }
     }
     private fun searchItems(q:String) {
-        page="home"
+        page="search"
         screen("Arama sonuçları")
-        button("Ana sayfa") { home(q) }
+        searchControls(q)
+        button("Ana sayfa",secondary=true) { home(searchInput?.text?.toString() ?: q) }
         if(q.isBlank()){label("Aranacak ürün adını yaz.");return}
         val key=q.trim().lowercase(java.util.Locale.forLanguageTag("tr"))
         var found=0
-        db.readableDatabase.rawQuery("SELECT i.name,i.qty,b.id,b.name,b.room,b.cupboard,b.shelf,i.note FROM items i JOIN boxes b ON b.id=i.box_id ORDER BY i.name",null).use { c ->
+        db.readableDatabase.rawQuery("SELECT i.name,i.id,b.id,b.name,b.room,b.cupboard,b.shelf,i.note,i.photo FROM items i JOIN boxes b ON b.id=i.box_id ORDER BY i.name",null).use { c ->
             while(c.moveToNext()) {
                 val text=listOf(c.getString(0),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)).joinToString(" ")
                 if(!text.lowercase(java.util.Locale.forLanguageTag("tr")).contains(key)) continue
                 found++
-                val id=c.getLong(2)
-                button("${c.getString(0)}\n${c.getString(4)} / ${c.getString(5)} / ${c.getString(6)} / ${c.getString(3)}") { showBox(id) }
+                val id=c.getLong(2); val itemId=c.getLong(1)
+                val path=listOf(c.getString(4),c.getString(5),c.getString(6),c.getString(3)).filter { it.isNotBlank() }.joinToString(" → ")
+                productCard(c.getString(0),path,c.getString(8)) { itemForm(id,itemId) }
             }
         }
         if(found==0) label("Ürün bulunamadı.")
     }
 
     private fun locationInput(hint:String, column:String, value:String, parents:()->Map<String,String>):AutoCompleteTextView {
-        val input=AutoCompleteTextView(this).apply { this.hint=hint; setText(value); threshold=1; setSingleLine(true) }
+        val input=com.google.android.material.textfield.MaterialAutoCompleteTextView(this).apply { this.hint=hint; setText(value); threshold=1; setSingleLine(true) }
         fun refresh() {
             val filters=parents()
             val where=if(filters.isEmpty()) "" else " WHERE "+filters.keys.joinToString(" AND ") { "$it=?" }
@@ -238,60 +368,88 @@ class MainActivity: androidx.activity.ComponentActivity() {
         }
         input.setOnFocusChangeListener { _,hasFocus -> if(hasFocus) refresh() }
         input.setOnClickListener { refresh(); input.showDropDown() }
-        root.addView(input); return input
+        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint }
+        container.addView(input,LinearLayout.LayoutParams(-1,-2))
+        root.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(14) }); return input
     }
-    private fun browseLocations(room:String?=null, cupboard:String?=null, shelf:String?=null) {
-        page="home"
-        screen(listOfNotNull(room,cupboard,shelf).joinToString(" → ").ifEmpty { "Odalar" })
-        button("Ana sayfa") { home() }
-        button("Bu konumda yeni kutu") { newBox(room ?: "",cupboard ?: "",shelf ?: "") }
-        val filters=linkedMapOf<String,String>()
-        room?.let { filters["room"]=it }; cupboard?.let { filters["cupboard"]=it }; shelf?.let { filters["shelf"]=it }
-        val where=if(filters.isEmpty()) "" else " WHERE "+filters.keys.joinToString(" AND ") { "$it=?" }
-        val column=when { room==null -> "room"; cupboard==null -> "cupboard"; shelf==null -> "shelf"; else -> "name" }
-        db.readableDatabase.rawQuery("SELECT DISTINCT $column"+(if(shelf!=null) ",id" else "")+" FROM boxes$where ORDER BY $column",filters.values.toTypedArray()).use { c ->
-            while(c.moveToNext()) {
-                val name=c.getString(0)
-                val id=if(shelf!=null) c.getLong(1) else 0
-                button(name.ifBlank { "Belirtilmemiş" }) {
-                    when { room==null -> browseLocations(name); cupboard==null -> browseLocations(room,name); shelf==null -> browseLocations(room,cupboard,name); else -> showBox(id) }
-                }
-            }
-            if(c.count==0) label("Henüz konum yok. Yeni kutu ekleyerek başlayın.")
-        }
-    }
-    private fun editBox(id:Long) {
+    private fun editBox(id:Long,state:Bundle?=null) {
         val values=db.readableDatabase.rawQuery("SELECT name,room,cupboard,shelf FROM boxes WHERE id=?",arrayOf(id.toString())).use { c ->
             if(!c.moveToFirst()) return
             List(4) { c.getString(it) }
         }
-        page="box"; screen("Kutu konumunu düzenle")
-        val fields=listOf("Kutu","Oda","Dolap","Raf").mapIndexed { index,hint -> input(hint,values[index]) }
+        page="editBox"; selectedBox=id; screen("Kutu konumunu düzenle")
+        label("Yalnızca kutu adı zorunludur.")
+        val draft=state?.getStringArrayList("boxDraft")
+        val fields=listOf("Kutu","Oda","Dolap","Raf").mapIndexed { index,hint -> input(hint,draft?.getOrNull(index) ?: values[index]) }
+        boxInputs=fields
         button("Kaydet") {
-            if(fields.any { it.text.isBlank() }) { toast("Tüm konum alanları gerekli"); return@button }
+            if(fields.first().text.isBlank()) { fields.first().error="Kutu adı gerekli"; return@button }
             val v=ContentValues().apply { listOf("name","room","cupboard","shelf").forEachIndexed { index,key -> put(key,fields[index].text.toString().trim()) } }
             db.writableDatabase.update("boxes",v,"id=?",arrayOf(id.toString())); showBox(id)
         }
         button("Vazgeç") { showBox(id) }
     }
     private fun deleteBox(id:Long) {
-        AlertDialog.Builder(this).setTitle("Boş kutu silinsin mi?").setMessage("Ürün içeren kutular silinemez.")
+        MaterialAlertDialogBuilder(this).setTitle("Boş kutu silinsin mi?").setMessage("Ürün içeren kutular silinemez.")
             .setNegativeButton("Vazgeç",null).setPositiveButton("Sil") { _,_ ->
                 try { db.writableDatabase.delete("boxes","id=?",arrayOf(id.toString())); home() }
                 catch(ex:Exception) { toast("Önce kutudaki ürünleri taşıyın veya silin") }
             }.show()
     }
-    private fun showPhoto(name:String) {
+    private fun photoView(name:String,height:Int=160):ImageView {
         val file=File(filesDir,"photos/$name")
         val bounds=android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds=true }
         android.graphics.BitmapFactory.decodeFile(file.absolutePath,bounds)
         var sample=1
         while(bounds.outWidth/sample>800 || bounds.outHeight/sample>800) sample*=2
-        root.addView(ImageView(this).apply {
+        return ImageView(this).apply {
             contentDescription="Ürün fotoğrafı"; scaleType=ImageView.ScaleType.CENTER_INSIDE
-            layoutParams=LinearLayout.LayoutParams(-1,(160*resources.displayMetrics.density).toInt())
+            layoutParams=LinearLayout.LayoutParams(-1,dp(height))
             setImageBitmap(android.graphics.BitmapFactory.decodeFile(file.absolutePath,android.graphics.BitmapFactory.Options().apply { inSampleSize=sample }))
-        })
+        }
+    }
+    private fun showPhoto(name:String) { root.addView(photoView(name)) }
+    private fun manualSection() {
+        val section=section("Kullanım Kılavuzu","PDF, Office, OpenDocument ve metin belgeleri ekleyebilirsiniz. Belge değişiklikleri Kaydet ile uygulanır.")
+        manualList=column(); section.addView(manualList)
+        manualButton=button("Belge ekle",section,secondary=true) { documentPicker.launch(ManualStorage.pickerTypes) }
+        manualButton?.isEnabled=!importingManuals
+        renderManuals()
+    }
+    private fun renderManuals() {
+        manualList.removeAllViews()
+        val saved=editingItem?.let { db.manuals(it) } ?: emptyList()
+        val all=saved.filter { it.id !in removedManuals }+pendingManuals
+        if(all.isEmpty()) manualList.addView(text("Henüz belge eklenmedi."))
+        all.forEach { manual ->
+            val card=MaterialCardView(this).apply { radius=dp(12).toFloat(); cardElevation=0f }
+            val body=column().apply { setPadding(dp(12),dp(8),dp(12),dp(8)) }
+            body.addView(text(manual.name))
+            body.addView(text(android.text.format.Formatter.formatShortFileSize(this,manual.size)))
+            button("Aç",body,secondary=true) {
+                try { startActivity(manualStorage.openIntent(manual)) }
+                catch(ex:ActivityNotFoundException) { toast("Bu belge türünü açabilen bir uygulama yükleyin.") }
+                catch(ex:Exception) { toast(ex.message ?: "Belge açılamadı.") }
+            }
+            button("Kaldır",body,secondary=true,danger=true) {
+                MaterialAlertDialogBuilder(this).setTitle("Belge kaldırılsın mı?").setMessage(manual.name)
+                    .setNegativeButton("Vazgeç",null).setPositiveButton("Kaldır") { _,_ ->
+                        if(manual.id==0L) { pendingManuals.remove(manual); manualStorage.remove(manual) }
+                        else removedManuals.add(manual.id)
+                        renderManuals()
+                    }.show()
+            }
+            card.addView(body); manualList.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(10) })
+        }
+    }
+    private fun deleteProduct(id:Long) {
+        val documents=db.manuals(id)
+        val photo=db.readableDatabase.rawQuery("SELECT photo FROM items WHERE id=?",arrayOf(id.toString())).use { c ->
+            if(c.moveToFirst() && !c.isNull(0)) c.getString(0) else null
+        }
+        db.writableDatabase.delete("items","id=?",arrayOf(id.toString()))
+        documents.forEach { manualStorage.remove(it) }
+        photo?.let { if(!db.photoInUse(it)) File(filesDir,"photos/$it").delete() }
     }
     private fun qrLabel(id:Long,title:String,location:String) {
         val matrix=com.google.zxing.MultiFormatWriter().encode(BoxQr.encode(id),com.google.zxing.BarcodeFormat.QR_CODE,640,640)
@@ -299,7 +457,7 @@ class MainActivity: androidx.activity.ComponentActivity() {
         val pixels=IntArray(640*640) { i -> if(matrix[i%640,i/640]) Color.BLACK else Color.WHITE }
         bitmap.setPixels(pixels,0,640,0,0,640,640)
         val image=ImageView(this).apply { setImageBitmap(bitmap); contentDescription="Kutu QR etiketi" }
-        AlertDialog.Builder(this).setTitle(title).setView(image).setNegativeButton("Kapat",null).setPositiveButton("Paylaş") { _,_ ->
+        MaterialAlertDialogBuilder(this).setTitle(title).setView(image).setNegativeButton("Kapat",null).setPositiveButton("Paylaş") { _,_ ->
             val dir=File(cacheDir,"labels").apply { mkdirs() }; val file=File(dir,"kutu-$id.png")
             file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
             val uri=FileProvider.getUriForFile(this,"$packageName.files",file)

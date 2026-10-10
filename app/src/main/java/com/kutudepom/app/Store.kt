@@ -1,16 +1,19 @@
 package com.kutudepom.app
 
 import android.content.Context
+import android.content.ContentValues
 import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-/** Version 2 preserves the original boxes/items IDs and existing QR labels. */
-class Store(ctx: Context, name: String = "kutudepom.db") : SQLiteOpenHelper(ctx,name,null,2) {
+/** Additive migrations keep boxes, products, photographs and legacy QR IDs. */
+class Store(ctx: Context, name: String = "kutudepom.db") : SQLiteOpenHelper(ctx,name,null,3) {
+    override fun onConfigure(db:SQLiteDatabase) { db.setForeignKeyConstraintsEnabled(true) }
     override fun onCreate(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE boxes(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, room TEXT NOT NULL, cupboard TEXT NOT NULL, shelf TEXT NOT NULL)")
         db.execSQL("CREATE TABLE items(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, qty INTEGER NOT NULL DEFAULT 1, box_id INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '', photo TEXT)")
         integrity(db)
+        documentSchema(db)
     }
     override fun onUpgrade(db:SQLiteDatabase, oldVersion:Int, newVersion:Int) {
         if(oldVersion<2) {
@@ -24,6 +27,17 @@ class Store(ctx: Context, name: String = "kutudepom.db") : SQLiteOpenHelper(ctx,
             }
             integrity(db)
         }
+        if(oldVersion<3) documentSchema(db)
+    }
+    private fun documentSchema(db:SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE product_documents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+            display_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL UNIQUE,
+            mime TEXT NOT NULL,
+            size INTEGER NOT NULL CHECK(size>=0))""")
+        db.execSQL("CREATE INDEX document_item ON product_documents(item_id)")
     }
     private fun integrity(db:SQLiteDatabase) {
         db.execSQL("CREATE INDEX IF NOT EXISTS item_box ON items(box_id)")
@@ -38,7 +52,7 @@ class Store(ctx: Context, name: String = "kutudepom.db") : SQLiteOpenHelper(ctx,
             BEGIN SELECT RAISE(ABORT,'Box contains items'); END""")
     }
     fun boxes():List<Pair<Long,String>> = readableDatabase.rawQuery("SELECT id,name,room,cupboard,shelf FROM boxes ORDER BY room,cupboard,shelf,name",null).use { c ->
-        buildList { while(c.moveToNext()) add(c.getLong(0) to "${c.getString(2)} → ${c.getString(3)} → ${c.getString(4)} → ${c.getString(1)}") }
+        buildList { while(c.moveToNext()) add(c.getLong(0) to listOf(c.getString(2),c.getString(3),c.getString(4),c.getString(1)).filter { it.isNotBlank() }.joinToString(" → ")) }
     }
     fun changeStock(id:Long, delta:Int):Boolean {
         require(delta==1 || delta == -1)
@@ -47,4 +61,24 @@ class Store(ctx: Context, name: String = "kutudepom.db") : SQLiteOpenHelper(ctx,
         }
     }
     fun photoInUse(name:String):Boolean = DatabaseUtils.longForQuery(readableDatabase,"SELECT COUNT(*) FROM items WHERE photo=?",arrayOf(name))>0
+    fun manuals(itemId:Long):List<Manual> = readableDatabase.rawQuery(
+        "SELECT id,display_name,stored_name,mime,size FROM product_documents WHERE item_id=? ORDER BY id",arrayOf(itemId.toString())
+    ).use { c -> buildList { while(c.moveToNext()) add(Manual(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getLong(4))) } }
+    fun manualFiles():Set<String> = readableDatabase.rawQuery("SELECT stored_name FROM product_documents",null).use { c ->
+        buildSet { while(c.moveToNext()) add(c.getString(0)) }
+    }
+    fun saveItem(id:Long?,values:ContentValues,added:List<Manual>,removed:Set<Long>):Long {
+        val db=writableDatabase
+        db.beginTransaction()
+        try {
+            val itemId=if(id==null) db.insertOrThrow("items",null,values) else {
+                check(db.update("items",values,"id=?",arrayOf(id.toString()))==1); id
+            }
+            removed.forEach { db.delete("product_documents","id=? AND item_id=?",arrayOf(it.toString(),itemId.toString())) }
+            added.forEach { m -> db.insertOrThrow("product_documents",null,ContentValues().apply {
+                put("item_id",itemId); put("display_name",m.name); put("stored_name",m.storedName); put("mime",m.mime); put("size",m.size)
+            }) }
+            db.setTransactionSuccessful(); return itemId
+        } finally { db.endTransaction() }
+    }
 }

@@ -1,50 +1,158 @@
 package com.kutudepom.app
 
+import android.app.Instrumentation
+import android.content.ContentValues
+import android.content.Intent
+import android.database.DatabaseUtils
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
+import androidx.core.content.FileProvider
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.intent.Intents
+import androidx.test.espresso.intent.Intents.intending
+import androidx.test.espresso.intent.Intents.intended
+import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
+import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.material.card.MaterialCardView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class InventoryFlowTest {
+    private val context get()=InstrumentationRegistry.getInstrumentation().targetContext
     private fun views(view:View):List<View> = listOf(view)+(if(view is ViewGroup) (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList())
-    private fun click(activity:MainActivity,text:String) {
-        val button=views(activity.window.decorView).filterIsInstance<Button>().first { it.text.toString()==text }
-        assertTrue(button.performClick())
+    private fun buttons(a:MainActivity)=views(a.window.decorView).filterIsInstance<Button>()
+    private fun press(a:MainActivity,text:String) { assertTrue(buttons(a).first { it.text.toString()==text }.performClick()) }
+    private fun field(a:MainActivity,hint:String)=views(a.window.decorView).filterIsInstance<EditText>().first { it.hint.toString()==hint }
+    private fun set(a:MainActivity,hint:String,value:String) { field(a,hint).setText(value) }
+    private fun openProduct(a:MainActivity,name:String) {
+        val card=views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="$name, ürün detayını aç" }
+        assertTrue(card.performClick())
     }
-    private fun set(activity:MainActivity,hint:String,value:String) {
-        views(activity.window.decorView).filterIsInstance<EditText>().first { it.hint.toString()==hint }.setText(value)
+    private fun createBox(a:MainActivity) {
+        press(a,"＋ Yeni kutu"); set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
     }
-    @Test fun createsBoxAndProductKeepsDraftOnRecreationAndChangesStock() {
-        val context=InstrumentationRegistry.getInstrumentation().targetContext
+    private fun awaitDocument(scenario:ActivityScenario<MainActivity>,name:String) {
+        val deadline=System.currentTimeMillis()+10000
+        var found=false
+        while(!found && System.currentTimeMillis()<deadline) {
+            scenario.onActivity { a -> found=views(a.window.decorView).filterIsInstance<TextView>().any { it.text.toString()==name } }
+            if(!found) Thread.sleep(50)
+        }
+        assertTrue("Belge listede görünmeli",found)
+    }
+    @Test fun optionalLocationsRepeatedSearchDraftPersistenceAndNoStockFields() {
         context.deleteDatabase("kutudepom.db")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
-                click(a,"＋ Yeni kutu")
-                set(a,"Kutu adı (örn. Kutu 1)","Test kutusu")
-                set(a,"Oda (örn. Proje odası)","Atölye"); set(a,"Dolap","Dolap 1"); set(a,"Raf","Raf 1")
-                click(a,"Kaydet"); click(a,"＋ Ürün ekle")
-                set(a,"Ürün adı","İplik"); set(a,"Adet","2"); set(a,"Not / açıklama","Kırmızı")
+                assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                set(a,"Ürün, not veya konum ara...","   ")
+                assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                assertFalse(buttons(a).any { it.text.toString()=="Oda → dolap → raf → kutu" })
+                press(a,"＋ Yeni kutu"); press(a,"Kaydet")
+                Store(context).use { assertTrue(it.boxes().isEmpty()) }
+                set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
+                press(a,"Kutu konumunu düzenle")
+                set(a,"Kutu",""); press(a,"Kaydet"); assertNotNull(field(a,"Kutu").error)
+                set(a,"Kutu","Test kutusu"); set(a,"Oda",""); set(a,"Dolap",""); set(a,"Raf",""); press(a,"Kaydet")
+                press(a,"＋ Ürün ekle"); set(a,"Ürün adı","İplik"); set(a,"Not / açıklama","Kırmızı")
+                assertFalse(views(a.window.decorView).filterIsInstance<EditText>().any { it.hint.toString()=="Adet" })
+                assertFalse(buttons(a).any { it.text.toString().contains("1 ·") })
             }
             scenario.recreate()
-            scenario.onActivity { a -> click(a,"Kaydet"); click(a,"− 1 · İplik") }
+            scenario.onActivity { a ->
+                assertEquals("İplik",field(a,"Ürün adı").text.toString())
+                press(a,"Kaydet")
+                val card=views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="İplik, ürün detayını aç" }
+                assertTrue(views(card).filterIsInstance<Button>().isEmpty())
+                press(a,"Ana sayfa"); set(a,"Ürün, not veya konum ara...","iplik")
+                assertTrue(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                press(a,"Ara"); assertEquals("iplik",field(a,"Ürün, not veya konum ara...").text.toString())
+                openProduct(a,"İplik"); press(a,"Geri"); press(a,"Ana sayfa")
+                set(a,"Ürün, not veya konum ara...","Kırmızı"); press(a,"Ara")
+                set(a,"Ürün, not veya konum ara...","bulunmayan"); press(a,"Ara")
+                assertTrue(views(a.window.decorView).filterIsInstance<TextView>().any { it.text.toString()=="Ürün bulunamadı." })
+                set(a,"Ürün, not veya konum ara...",""); assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+            }
             Store(context).use { store ->
-                assertTrue(store.boxes().single().second.contains("Atölye → Dolap 1 → Raf 1 → Test kutusu"))
+                assertEquals("Test kutusu",store.boxes().single().second)
                 store.readableDatabase.rawQuery("SELECT name,qty,note FROM items",null).use { c ->
                     assertTrue(c.moveToFirst()); assertEquals("İplik",c.getString(0)); assertEquals(1,c.getInt(1)); assertEquals("Kırmızı",c.getString(2))
                 }
             }
-            scenario.onActivity { a ->
-                click(a,"QR etiketi göster / paylaş")
-                assertTrue(views(a.window.decorView).isNotEmpty())
-            }
         }
         context.deleteDatabase("kutudepom.db")
+    }
+    @Test fun copiedDocumentsSurviveRecreationOpenRemoveMoveAndDeleteWithProduct() {
+        context.deleteDatabase("kutudepom.db")
+        Intents.init()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { a -> createBox(a); press(a,"＋ Ürün ekle"); set(a,"Ürün adı","Matkap") }
+                val source=File(context.filesDir,"manuals/kilavuz.pdf").apply { parentFile?.mkdirs(); writeText("%PDF-1.4\nTest manual\n%%EOF") }
+                val sourceUri=FileProvider.getUriForFile(context,"${context.packageName}.files",source)
+                intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent().setData(sourceUri)))
+                scenario.onActivity { a -> press(a,"Belge ekle") }
+                awaitDocument(scenario,"kilavuz.pdf")
+                scenario.recreate()
+                scenario.onActivity { a -> press(a,"Kaydet"); openProduct(a,"Matkap") }
+                val storage=ManualStorage(context)
+                var first:Manual?=null
+                Store(context).use { store -> first=store.manuals(1).single() }
+                assertEquals("kilavuz.pdf",first!!.name); assertEquals("application/pdf",first!!.mime)
+                assertNotEquals(source.name,first!!.storedName)
+                source.delete()
+                val open=storage.openIntent(first!!)
+                assertEquals(Intent.ACTION_VIEW,open.action); assertEquals("application/pdf",open.type)
+                assertTrue(open.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+                assertEquals("%PDF-1.4\nTest manual\n%%EOF",context.contentResolver.openInputStream(open.data!!)!!.bufferedReader().use { it.readText() })
+                intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent()))
+                scenario.onActivity { a -> press(a,"Aç") }; intended(hasAction(Intent.ACTION_VIEW))
+                scenario.onActivity { a -> press(a,"Kaldır") }
+                onView(withId(android.R.id.button1)).perform(click())
+                scenario.onActivity { a -> press(a,"Kaydet") }
+                Store(context).use { assertTrue(it.manuals(1).isEmpty()) }
+                assertFalse(storage.file(first!!).exists())
+                source.writeText("%PDF-1.4\nSecond manual\n%%EOF")
+                scenario.onActivity { a -> openProduct(a,"Matkap"); press(a,"Belge ekle") }
+                awaitDocument(scenario,"kilavuz.pdf")
+                scenario.onActivity { a -> press(a,"Kaydet"); openProduct(a,"Matkap") }
+                var second:Manual?=null
+                Store(context).use { store ->
+                    second=store.manuals(1).single()
+                    store.writableDatabase.insertOrThrow("boxes",null,ContentValues().apply {
+                        put("name","Hedef"); put("room",""); put("cupboard",""); put("shelf","")
+                    })
+                }
+                scenario.onActivity { a -> press(a,"Başka kutuya taşı") }
+                onView(withText("Hedef")).perform(click())
+                Store(context).use { store ->
+                    assertEquals(second!!.storedName,store.manuals(1).single().storedName)
+                    assertEquals(2L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT box_id FROM items WHERE id=1",null))
+                }
+                scenario.onActivity { a -> openProduct(a,"Matkap"); press(a,"Ürünü sil") }
+                onView(withId(android.R.id.button1)).perform(click())
+                Store(context).use { store ->
+                    assertTrue(store.manuals(1).isEmpty())
+                    assertEquals(0L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT COUNT(*) FROM items",null))
+                }
+                assertFalse(storage.file(second!!).exists())
+                source.delete()
+                scenario.onActivity { a -> press(a,"Boş kutuyu sil") }
+                // Opening the confirmation must not delete the box.
+                Store(context).use { assertEquals(2,it.boxes().size) }
+                onView(withId(android.R.id.button2)).perform(click())
+            }
+        } finally { Intents.release(); context.deleteDatabase("kutudepom.db") }
     }
 }
