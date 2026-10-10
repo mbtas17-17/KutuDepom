@@ -62,7 +62,15 @@ class InventoryFlowTest {
             override fun getDescription()="Activate box operation"
             override fun getConstraints():org.hamcrest.Matcher<View> = androidx.test.espresso.matcher.ViewMatchers.isDisplayed()
             override fun perform(controller:androidx.test.espresso.UiController,view:View) {
-                assertTrue(view.performClick()); controller.loopMainThreadUntilIdle()
+                var parent=view.parent
+                while(parent !is android.widget.AdapterView<*>) {
+                    parent=parent.parent ?: error("Operation list not found")
+                }
+                val list=parent
+                val position=list.getPositionForView(view)
+                assertTrue(position>=0)
+                assertTrue(list.performItemClick(view,position,list.getItemIdAtPosition(position)))
+                controller.loopMainThreadUntilIdle()
             }
         })
     }
