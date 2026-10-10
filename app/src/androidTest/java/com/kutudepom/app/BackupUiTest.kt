@@ -56,14 +56,14 @@ class BackupUiTest {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { assertTrue(press(it,"Yedekle")) }
                 await(scenario) { !it.busy && file.length()>0 }
-                Intents.intended(allOf(hasAction(Intent.ACTION_CREATE_DOCUMENT),hasType("application/zip")))
+                assertTrue(Intents.getIntents().any { it.action==Intent.ACTION_CREATE_DOCUMENT && it.type=="application/zip" })
                 val prepared=BackupRepository(context).prepare(uri); BackupRepository(context).discard(prepared)
                 // Dismiss export success before starting the import picker.
                 dialogButton(android.R.id.button1)
                 Store(context).use { it.writableDatabase.execSQL("UPDATE boxes SET name='Mevcut kutu' WHERE id=1") }
                 scenario.onActivity { assertTrue(press(it,"İçe Aktar")) }
                 await(scenario) { it.pending!=null }
-                Intents.intended(hasAction(Intent.ACTION_OPEN_DOCUMENT))
+                assertTrue(Intents.getIntents().any { it.action==Intent.ACTION_OPEN_DOCUMENT })
                 Store(context).use { assertEquals("Mevcut kutu",it.boxes().single().second) }
                 scenario.recreate()
                 await(scenario) { it.pending!=null }
