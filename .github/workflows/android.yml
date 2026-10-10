@@ -58,6 +58,18 @@ jobs:
           api-level: ${{ matrix.api }}
           arch: x86_64
           script: ./gradlew --no-daemon connectedDebugAndroidTest
+      - name: Show Android test failures
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path('app/build/outputs/androidTest-results').rglob('*.xml'):
+              for case in ET.parse(path).iter('testcase'):
+                  for failure in list(case.findall('failure')) + list(case.findall('error')):
+                      print(case.attrib)
+                      print(failure.text)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
