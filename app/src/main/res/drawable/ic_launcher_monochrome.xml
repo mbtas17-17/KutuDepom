@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Separate, readable document/photo/box glyph for themed launcher icons. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M29,50 L39,36 Q40,35 42,34 L67,27 Q69,26 70,28 L74,34 L44,43 L33,55 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M47,44 L55,42 Q57,42 57,44 L60,57 L49,60 L45,47 Q44,45 47,44 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M60,43 L69,40 Q71,39 72,42 L75,55 L63,58 L59,45 Q59,43 60,43 Z M66,49 L64,54 L72,52 L69,48 L68,51 Z M67,43 a1.5,1.5 0,1 0,0,3 a1.5,1.5 0,1 0,0,-3"/>
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M34,55 L48,63 L77,55 L77,72 Q77,74 75,75 L51,82 Q49,83 47,82 L34,74 Q33,73 33,71 L33,57 Q33,55 34,55 Z M51,65 L51,78 L53,77.5 L53,64.5 Z M61,68 L70,65.5 Q72,65 72,67 Q72,69 70,69.5 L61,72 Q59,72.5 59,70.5 Q59,68.5 61,68"/>
+</vector>

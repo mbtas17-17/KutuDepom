@@ -48,6 +48,10 @@ Yedek biçimi sürüm 1'dir. CRC, dosya boyutu, SHA-256, gerekli dosyalar, SQLit
 
 ### Mevcut uygulamanın üzerine kurulum ve imza
 
-Paket kimliği `com.kutudepom.app` korunur, sürüm kodu 5'tir. Üzerine kurulum için **kurulu APK ile aynı özel imza anahtarı** gerekir. Önceki Actions sürümleri geçici debug anahtarını saklamadığı için 0.3 ve 0.4 APK sertifikaları farklıdır; özel anahtar APK'dan geri çıkarılamaz. Uygulamayı kaldırmak çözüm değildir ve yerel verileri riske atar.
+Paket kimliği `com.kutudepom.app` korunur, sürüm kodu 6'dır. Üzerine kurulum için **kurulu APK ile aynı özel imza anahtarı** gerekir. Önceki Actions sürümleri geçici debug anahtarını saklamadığı için 0.3 ve 0.4 APK sertifikaları farklıdır; özel anahtar APK'dan geri çıkarılamaz. Uygulamayı kaldırmak çözüm değildir ve yerel verileri riske atar.
 
 Özgün anahtar mevcutsa depo Actions secrets alanında `KUTUDEPOM_KEYSTORE_BASE64`, `KUTUDEPOM_STORE_PASSWORD`, `KUTUDEPOM_KEY_ALIAS`, `KUTUDEPOM_KEY_PASSWORD` tanımlanır. Anahtar depoya veya artifact'e yüklenmez. CI sertifikayı önceki 0.4.0 APK'sının SHA-256 değeriyle kontrol eder. Başka özgün bir sürüm için beklenen sertifika `KUTUDEPOM_EXPECTED_SIGNER_SHA256` Actions variable olarak belirtilebilir. Eşleşen anahtarla `KutuDepom-APK` üretilir; anahtar yoksa yalnızca **KutuDepom-TEST-APK** yayımlanır ve bu dosya 0.4 üzerine kurulabilir güncelleme olarak sunulmaz.
+
+## Launcher ikonu (0.5.1)
+
+Kullanıcının gönderdiği turuncu kutu görseli, transparan foreground ve maskeyi dolduran mavi gradient background ile adaptive icon olarak kullanılır. Foreground 108 dp katmanda merkezlenir; görünür şekil 66 dp çapındaki güvenli alanın içinde kalır. mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi için 108/162/216/324/432 px foreground ve 48/72/96/144/192 px klasik/yuvarlak launcher kaynakları vardır. API 26 adaptive XML, API 33 monochrome vektörü; manifest hem icon hem roundIcon belirtir. Monochrome, tema rengini launcher'dan alır. One UI maskesi için daire ve yuvarlatılmış kare önizlemeleri kontrol edildi; fiziksel Samsung cihazında doğrulama bu ortamda yapılamadı. Paket kimliği ve veritabanı şeması değişmez.
