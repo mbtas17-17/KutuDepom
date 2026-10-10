@@ -162,7 +162,7 @@ class MainActivity: AppCompatActivity() {
         install(frame)
         scroll.viewTreeObserver.addOnGlobalLayoutListener {
             val focused=root.findFocus()
-            if(focused is EditText) {
+            if(focused is EditText && androidx.core.view.ViewCompat.getRootWindowInsets(scroll)?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())==true) {
                 val bounds=android.graphics.Rect(); focused.getDrawingRect(bounds)
                 root.offsetDescendantRectToMyCoords(focused,bounds)
                 scroll.requestChildRectangleOnScreen(root,bounds,true)

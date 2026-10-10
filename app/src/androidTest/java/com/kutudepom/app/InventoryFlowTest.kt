@@ -45,6 +45,17 @@ class InventoryFlowTest {
         layout(a)
         assertTrue(views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="$name, kutu içeriğini aç" }.performClick())
     }
+    // Other activity controls are activated with performClick too. Use the same deterministic
+    // activation for dialog buttons; emulator IME/window transitions can discard injected taps.
+    private fun dialogButton(id:Int) {
+        onView(withId(id)).inRoot(isDialog()).perform(object:androidx.test.espresso.ViewAction {
+            override fun getDescription()="Activate confirmation button"
+            override fun getConstraints():org.hamcrest.Matcher<View> = androidx.test.espresso.matcher.ViewMatchers.isDisplayed()
+            override fun perform(controller:androidx.test.espresso.UiController,view:View) {
+                assertTrue(view.performClick()); controller.loopMainThreadUntilIdle()
+            }
+        })
+    }
     private fun chooseOperation(scenario:ActivityScenario<MainActivity>,name:String) {
         scenario.onActivity { press(it,"Kutu İşlemleri") }
         onView(withText(name)).inRoot(isDialog()).perform(click())
@@ -136,7 +147,7 @@ class InventoryFlowTest {
                 assertTrue(open.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
                 assertEquals("%PDF-1.4\nTest manual\n%%EOF",context.contentResolver.openInputStream(open.data!!)!!.bufferedReader().use { it.readText() })
                 scenario.onActivity { a -> press(a,"Kaldır") }
-                onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
+                dialogButton(android.R.id.button1)
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { a ->
                     assertEquals("Matkap",field(a,"Ürün adı").text.toString())
@@ -164,7 +175,7 @@ class InventoryFlowTest {
                     assertEquals(2L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT box_id FROM items WHERE id=1",null))
                 }
                 scenario.onActivity { a -> openProduct(a,"Matkap"); press(a,"Ürünü sil") }
-                onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
+                dialogButton(android.R.id.button1)
                 Store(context).use { store ->
                     assertTrue(store.manuals(1).isEmpty())
                     assertEquals(0L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT COUNT(*) FROM items",null))
@@ -174,7 +185,7 @@ class InventoryFlowTest {
                 chooseOperation(scenario,"Boş kutuyu sil")
                 // Opening the confirmation must not delete the box.
                 Store(context).use { assertEquals(2,it.boxes().size) }
-                onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
+                dialogButton(android.R.id.button2)
             }
         } finally { Intents.release(); context.deleteDatabase("kutudepom.db") }
     }
@@ -193,7 +204,7 @@ class InventoryFlowTest {
                 awaitDocument(scenario,"Fotoğraf seçildi ✓")
                 scenario.recreate()
                 scenario.onActivity { a -> press(a,"Kaydet"); press(a,"QR Etiketi") }
-                onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
+                dialogButton(android.R.id.button2)
                 Store(context).use { store ->
                     store.readableDatabase.rawQuery("SELECT photo,note FROM items",null).use { c ->
                         assertTrue(c.moveToFirst()); assertEquals("Fotoğraf notu",c.getString(1))
