@@ -58,7 +58,13 @@ class InventoryFlowTest {
     }
     private fun chooseOperation(scenario:ActivityScenario<MainActivity>,name:String) {
         scenario.onActivity { press(it,"Kutu İşlemleri") }
-        onView(withText(name)).inRoot(isDialog()).perform(click())
+        onView(withText(name)).inRoot(isDialog()).perform(object:androidx.test.espresso.ViewAction {
+            override fun getDescription()="Activate box operation"
+            override fun getConstraints():org.hamcrest.Matcher<View> = androidx.test.espresso.matcher.ViewMatchers.isDisplayed()
+            override fun perform(controller:androidx.test.espresso.UiController,view:View) {
+                assertTrue(view.performClick()); controller.loopMainThreadUntilIdle()
+            }
+        })
     }
     private fun openProduct(a:MainActivity,name:String) {
         layout(a)
