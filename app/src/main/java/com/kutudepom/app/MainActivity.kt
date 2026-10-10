@@ -176,7 +176,15 @@ class MainActivity: AppCompatActivity() {
         root=column().apply { id=R.id.fixed_header; setPadding(dp(12),dp(8),dp(12),0) }
         shell.addView(root,LinearLayout.LayoutParams(-1,-2))
         install(shell)
-        root.addView(text(title,20).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END })
+        val heading=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; isBaselineAligned=false; setPadding(0,dp(2),0,dp(4)) }
+        val (background,foreground)=palette(selectedBox ?: 0)
+        heading.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_package); imageTintList=ColorStateList.valueOf(foreground)
+            setPadding(dp(6),dp(6),dp(6),dp(6)); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            this.background=android.graphics.drawable.GradientDrawable().apply { setColor(background); cornerRadius=dp(10).toFloat() }
+        },LinearLayout.LayoutParams(dp(32),dp(32)).apply { marginEnd=dp(10) })
+        heading.addView(text(title,20).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END },LinearLayout.LayoutParams(0,-2,1f))
+        root.addView(heading)
         return shell
     }
     private data class Row(val id:Long,val name:String,val description:String,val location:String="",val box:Boolean=false,val open:()->Unit)

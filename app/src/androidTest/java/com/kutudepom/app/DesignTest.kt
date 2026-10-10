@@ -62,17 +62,22 @@ class DesignTest {
                     val card=list.findViewHolderForAdapterPosition(1)!!.itemView
                     assertEquals("1",views(card).filterIsInstance<TextView>()[0].text.toString())
                     assertEquals(firstColor,views(card).filterIsInstance<ImageView>()[0].imageTintList!!.defaultColor)
+                    a.delegate.localNightMode=androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
                 }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { a -> capture(a,"home-dark"); a.findViewById<RecyclerView>(R.id.inventory_list).findViewHolderForAdapterPosition(0)!!.itemView.performClick() }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { a -> capture(a,"box-dark"); a.delegate.localNightMode=androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { a -> capture(a,"box-light") }
             }
         } finally { context.deleteDatabase("kutudepom.db") }
     }
     private fun capture(a:MainActivity,name:String) {
-        val v=a.window.decorView
-        val bitmap=android.graphics.Bitmap.createBitmap(v.width,v.height,android.graphics.Bitmap.Config.ARGB_8888)
-        v.draw(android.graphics.Canvas(bitmap))
-        val file=java.io.File(context.getExternalFilesDir(null),"previews/$name.png").apply { parentFile?.mkdirs() }
-        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
-        bitmap.recycle()
+        assertTrue(a.window.decorView.width>0)
+        val automation=InstrumentationRegistry.getInstrumentation().uiAutomation
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("mkdir -p /sdcard/Download/kutudepom-previews")).use { it.readBytes() }
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand("screencap -p /sdcard/Download/kutudepom-previews/$name.png")).use { it.readBytes() }
     }
     @Test fun pastelIconContrastInBothThemes() {
         val pairs=listOf(R.color.pastel_green to R.color.ink_green,R.color.pastel_blue to R.color.ink_blue,R.color.pastel_purple to R.color.ink_purple,R.color.pastel_orange to R.color.ink_orange)
