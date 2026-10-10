@@ -160,6 +160,7 @@ class MainActivity: AppCompatActivity() {
         label(title,20)
     }
     private fun listScreen(title:String):LinearLayout {
+        (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(window.decorView.windowToken,0)
         val shell=column().apply { setBackgroundColor(color(com.google.android.material.R.attr.colorSurface)) }
         root=column().apply { id=R.id.fixed_header; setPadding(dp(12),dp(8),dp(12),0) }
         shell.addView(root,LinearLayout.LayoutParams(-1,-2))
@@ -352,7 +353,7 @@ class MainActivity: AppCompatActivity() {
             }
             val removedFiles=itemId?.let { db.manuals(it).filter { m -> m.id in removedManuals } } ?: emptyList()
             try { db.saveItem(itemId,values,pendingManuals,removedManuals) }
-            catch(ex:Exception) { toast("Ürün kaydedilemedi. Lütfen tekrar deneyin."); return@button }
+            catch(ex:Exception) { android.util.Log.e("KutuDepom","Ürün kaydedilemedi",ex); toast("Ürün kaydedilemedi. Lütfen tekrar deneyin."); return@button }
             pendingManuals.clear(); removedManuals.clear(); removedFiles.forEach { manualStorage.remove(it) }
             originalPhoto?.takeIf { it!=currentPhoto && !db.photoInUse(it) }?.let { File(filesDir,"photos/$it").delete() }
             showBox(boxId)

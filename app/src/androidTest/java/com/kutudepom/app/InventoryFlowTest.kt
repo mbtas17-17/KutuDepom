@@ -137,7 +137,13 @@ class InventoryFlowTest {
                 assertEquals("%PDF-1.4\nTest manual\n%%EOF",context.contentResolver.openInputStream(open.data!!)!!.bufferedReader().use { it.readText() })
                 scenario.onActivity { a -> press(a,"Kaldır") }
                 onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
-                scenario.onActivity { a -> press(a,"Kaydet") }
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                scenario.onActivity { a ->
+                    assertEquals("Matkap",field(a,"Ürün adı").text.toString())
+                    assertFalse("Removal must be staged in form",views(a.window.decorView).filterIsInstance<TextView>().any { it.text.toString()=="kilavuz.pdf" })
+                    press(a,"Kaydet")
+                    assertFalse("Save must leave the form",views(a.window.decorView).filterIsInstance<EditText>().any { it.hint.toString()=="Ürün adı" })
+                }
                 Store(context).use { assertTrue(it.manuals(1).isEmpty()) }
                 assertFalse(storage.file(first!!).exists())
                 source.writeText("%PDF-1.4\nSecond manual\n%%EOF")

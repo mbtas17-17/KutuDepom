@@ -26,7 +26,15 @@ class ListUsabilityTest {
     private fun views(v:View):List<View> = listOf(v)+(if(v is ViewGroup) (0 until v.childCount).flatMap { views(v.getChildAt(it)) } else emptyList())
     private fun press(a:MainActivity,name:String) { views(a.window.decorView).filterIsInstance<MaterialButton>().first { it.text.toString()==name }.performClick() }
     private fun field(a:MainActivity,name:String)=views(a.window.decorView).filterIsInstance<EditText>().first { it.hint.toString()==name }
-    private fun rect(v:View)=Rect().also { assertTrue(v.getGlobalVisibleRect(it)); assertEquals("Control must remain fully visible",v.height,it.height()) }
+    private fun rect(v:View):Rect {
+        val visible=Rect()
+        assertTrue("${v.javaClass.simpleName} must be visible",v.getGlobalVisibleRect(visible))
+        val matrix=android.graphics.Matrix(); v.transformMatrixToGlobal(matrix)
+        val full=android.graphics.RectF(0f,0f,v.width.toFloat(),v.height.toFloat()); matrix.mapRect(full)
+        assertTrue("Control must remain fully visible: expected=$full actual=$visible scale=${v.scaleY}",
+            visible.top<=full.top+2 && visible.bottom>=full.bottom-2 && visible.left<=full.left+2 && visible.right>=full.right-2)
+        return visible
+    }
     private fun seed() {
         context.deleteDatabase("kutudepom.db")
         Store(context).use { store ->
@@ -121,5 +129,16 @@ class ListUsabilityTest {
         }
         assertTrue("Actual soft keyboard should be visible",visible)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        // Insets and focus scrolling are posted after IME visibility changes; await the final field bounds.
+        val settle=System.currentTimeMillis()+5000
+        var reached=false
+        while(!reached && System.currentTimeMillis()<settle) {
+            scenario.onActivity { a ->
+                val edit=field(a,hint); val visibleRect=Rect()
+                reached=edit.getGlobalVisibleRect(visibleRect) && visibleRect.height()>=edit.height-2
+            }
+            if(!reached) Thread.sleep(100)
+        }
+        assertTrue("Focused field must fit above keyboard",reached)
     }
 }
