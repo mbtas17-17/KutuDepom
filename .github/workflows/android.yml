@@ -40,7 +40,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [29, 35]
+        include:
+          - api: 29
+            size: 720x1280
+            density: 360
+          - api: 35
+            size: 1440x3120
+            density: 560
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -57,7 +63,11 @@ jobs:
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
-          script: ./gradlew --no-daemon connectedDebugAndroidTest
+          script: |
+            adb shell wm size ${{ matrix.size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            ./gradlew --no-daemon connectedDebugAndroidTest
       - name: Show Android test failures
         if: failure()
         run: |

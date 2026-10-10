@@ -1,0 +1,5 @@
+<resources>
+    <item name="fixed_header" type="id" />
+    <item name="inventory_list" type="id" />
+    <item name="form_scroll" type="id" />
+</resources>

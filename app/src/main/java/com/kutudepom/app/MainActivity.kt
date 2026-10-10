@@ -6,6 +6,8 @@ import android.content.*
 import android.graphics.Color
 import android.view.*
 import android.widget.*
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.LinearLayoutManager
 import java.io.File
 import androidx.core.content.FileProvider
 import com.journeyapps.barcodescanner.ScanContract
@@ -140,32 +142,81 @@ class MainActivity: AppCompatActivity() {
     private fun color(attr:Int)=MaterialColors.getColor(this,attr,"KutuDepom")
     private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
     private fun column()=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-    private fun space(parent:LinearLayout=root) { parent.addView(Space(this),LinearLayout.LayoutParams(1,dp(12))) }
-    private fun screen(title:String) {
-        root=column().apply { setPadding(dp(20),dp(16),dp(20),dp(24)); setBackgroundColor(color(com.google.android.material.R.attr.colorSurface)) }
-        val scroll=ScrollView(this).apply { addView(root); isFillViewport=true }
-        setContentView(scroll)
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(scroll) { v,insets ->
+    private fun space(parent:LinearLayout=root) { parent.addView(Space(this),LinearLayout.LayoutParams(1,dp(8))) }
+    private fun install(content:View) {
+        setContentView(content)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(content) { v,insets ->
             val bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.ime())
-            v.setPadding(bars.left,bars.top,bars.right,bars.bottom); insets
+            v.setPadding(bars.left,bars.top,bars.right,bars.bottom)
+            v.post { v.findFocus()?.let { focus -> focus.requestRectangleOnScreen(android.graphics.Rect(0,0,focus.width,focus.height),false) } }
+            insets
         }
-        androidx.core.view.ViewCompat.requestApplyInsets(scroll)
-        label(title,24)
+        androidx.core.view.ViewCompat.requestApplyInsets(content)
     }
-    private fun text(s:String,size:Int=17)=MaterialTextView(this).apply {
+    private fun screen(title:String) {
+        root=column().apply { setPadding(dp(12),dp(12),dp(12),dp(16)) }
+        val scroll=ScrollView(this).apply { id=R.id.form_scroll; addView(root); isFillViewport=true }
+        install(scroll)
+        label(title,20)
+    }
+    private fun listScreen(title:String):LinearLayout {
+        val shell=column().apply { setBackgroundColor(color(com.google.android.material.R.attr.colorSurface)) }
+        root=column().apply { id=R.id.fixed_header; setPadding(dp(12),dp(8),dp(12),0) }
+        shell.addView(root,LinearLayout.LayoutParams(-1,-2))
+        install(shell)
+        root.addView(text(title,20).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END })
+        return shell
+    }
+    private data class Row(val id:Long,val name:String,val description:String,val open:()->Unit)
+    private fun list(shell:LinearLayout,rows:List<Row>,empty:String) {
+        if(rows.isEmpty()) root.addView(text(empty))
+        val recycler=RecyclerView(this).apply {
+            id=R.id.inventory_list; layoutManager=LinearLayoutManager(this@MainActivity)
+            setPadding(dp(12),dp(4),dp(12),dp(8)); clipToPadding=false
+            adapter=object:RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+                init { setHasStableIds(true) }
+                override fun getItemId(position:Int)=rows[position].id
+                override fun getItemCount()=rows.size
+                override fun onCreateViewHolder(parent:ViewGroup,type:Int):RecyclerView.ViewHolder {
+                    val card=MaterialCardView(this@MainActivity).apply {
+                        radius=dp(12).toFloat(); cardElevation=0f; isClickable=true; isFocusable=true
+                        setContentPadding(dp(12),dp(10),dp(12),dp(10)); minimumHeight=dp(52)
+                        layoutParams=RecyclerView.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }
+                    }
+                    card.addView(text("",16).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END })
+                    return object:RecyclerView.ViewHolder(card) {}
+                }
+                override fun onBindViewHolder(holder:RecyclerView.ViewHolder,position:Int) {
+                    val row=rows[position]; val card=holder.itemView as MaterialCardView
+                    (card.getChildAt(0) as TextView).text=row.name
+                    card.contentDescription=row.description; card.setOnClickListener { row.open() }
+                }
+            }
+        }
+        shell.addView(recycler,LinearLayout.LayoutParams(-1,0,1f))
+    }
+    private fun actionRow():LinearLayout=LinearLayout(this).apply {
+        orientation=LinearLayout.HORIZONTAL; root.addView(this,LinearLayout.LayoutParams(-1,-2))
+    }
+    private fun rowButton(s:String,row:LinearLayout,click:()->Unit)=button(s,row,secondary=true,click=click).apply {
+        layoutParams=LinearLayout.LayoutParams(0,dp(56),1f).apply { marginEnd=dp(4) }
+        setPadding(dp(4),0,dp(4),0); maxLines=2
+    }
+    private fun text(s:String,size:Int=14)=MaterialTextView(this).apply {
         text=s
         setTextAppearance(when {
             size>=24 -> com.google.android.material.R.style.TextAppearance_Material3_HeadlineSmall
             size>=20 -> com.google.android.material.R.style.TextAppearance_Material3_TitleLarge
-            else -> com.google.android.material.R.style.TextAppearance_Material3_BodyLarge
+            size>=16 -> com.google.android.material.R.style.TextAppearance_Material3_BodyLarge
+            else -> com.google.android.material.R.style.TextAppearance_Material3_BodyMedium
         })
         setTextColor(color(com.google.android.material.R.attr.colorOnSurface))
-        setPadding(0,dp(8),0,dp(8))
+        setPadding(0,dp(4),0,dp(4))
     }
-    private fun label(s:String,size:Int=17) { root.addView(text(s,size)) }
+    private fun label(s:String,size:Int=14) { root.addView(text(s,size)) }
     private fun button(s:String,parent:LinearLayout=root,secondary:Boolean=false,danger:Boolean=false,click:()->Unit):MaterialButton {
         val button=MaterialButton(this).apply {
-            text=s; isAllCaps=false; minHeight=dp(48); cornerRadius=dp(16)
+            text=s; isAllCaps=false; minHeight=dp(48); cornerRadius=dp(12); setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_LabelLarge)
             if(secondary) {
                 backgroundTintList=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorSurface))
                 strokeWidth=dp(1); strokeColor=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorOutline))
@@ -176,27 +227,27 @@ class MainActivity: AppCompatActivity() {
             }
             setOnClickListener { click() }
         }
-        parent.addView(button,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
+        parent.addView(button,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(4) })
         return button
     }
     private fun input(hint:String,value:String="",parent:LinearLayout=root,multiline:Boolean=false):EditText {
-        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint }
+        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint; setBoxCornerRadii(dp(12).toFloat(),dp(12).toFloat(),dp(12).toFloat(),dp(12).toFloat()) }
         val edit=TextInputEditText(container.context).apply {
-            this.hint=hint; setText(value); setSingleLine(!multiline)
+            this.hint=hint; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge); setText(value); setSingleLine(!multiline)
             if(multiline) { minLines=3; maxLines=6; gravity=Gravity.TOP }
         }
         container.addView(edit,LinearLayout.LayoutParams(-1,-2))
-        parent.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(14) })
+        parent.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) })
         return edit
     }
     private fun section(title:String,subtitle:String?=null):LinearLayout {
         space()
         val card=MaterialCardView(this).apply {
-            radius=dp(20).toFloat(); cardElevation=0f
+            radius=dp(12).toFloat(); cardElevation=0f
             setCardBackgroundColor(color(com.google.android.material.R.attr.colorSurfaceVariant))
         }
         val content=column().apply { setPadding(dp(16),dp(12),dp(16),dp(12)) }
-        content.addView(text(title,20)); subtitle?.let { content.addView(text(it)) }
+        content.addView(text(title,16)); subtitle?.let { content.addView(text(it)) }
         card.addView(content); root.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
         return content
     }
@@ -217,14 +268,13 @@ class MainActivity: AppCompatActivity() {
     }
     private fun home(query:String="") {
         cleanDraft(); currentPhoto=null; page="home"; selectedBox=null
-        screen("📦 KutuDepom")
-        button("＋ Yeni kutu") { newBox() }
-        button("▣ QR kod tara") { scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Kutunun QR kodunu okut").setBeepEnabled(false)) }
+        val shell=listScreen("KutuDepom")
+        val actions=actionRow()
+        rowButton("＋ Yeni kutu",actions) { newBox() }
+        rowButton("▣ QR kod tara",actions) { scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Kutunun QR kodunu okut").setBeepEnabled(false)) }
         searchControls(query)
-        label("Kutular",20)
-        val boxes=db.boxes()
-        if(boxes.isEmpty()) label("Henüz kutu yok. İlk kutunu oluştur.")
-        boxes.forEach { (id,name)->button(name) { showBox(id) } }
+        label("Kutular",16)
+        list(shell,db.boxes().map { (id,name) -> Row(id,name,"$name, kutu içeriğini aç") { showBox(id) } },"Henüz kutu yok. İlk kutunu oluştur.")
     }
     private fun newBox(roomName:String="", cupboardName:String="", shelfName:String="",state:Bundle?=null) {
         page="newBox"
@@ -254,33 +304,24 @@ class MainActivity: AppCompatActivity() {
         }
         if(box==null) { toast("Bu kutu cihazda bulunamadı"); home(); return }
         val title=box[0]; val location=box.drop(1).filter { it.isNotBlank() }.joinToString(" → ")
-        screen(title)
-        if(location.isNotBlank()) label(location)
-        label("Ürünler",20)
-        db.readableDatabase.rawQuery("SELECT id,name,note,photo FROM items WHERE box_id=? ORDER BY name",arrayOf(id.toString())).use { c ->
-            if(c.count==0) label("Bu kutu boş. Aşağıdaki bölümden ürün ekleyin.")
-            while(c.moveToNext()) {
-                val itemId=c.getLong(0); val name=c.getString(1)
-                productCard(name,c.getString(2),c.getString(3)) { itemForm(id,itemId) }
-            }
+        val shell=listScreen(title)
+        if(location.isNotBlank()) root.addView(text(location).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END })
+        val actions=actionRow()
+        rowButton("Ürün Ekle",actions) { itemForm(id,null) }
+        rowButton("QR Etiketi",actions) { qrLabel(id,title,location) }
+        rowButton("Kutu İşlemleri",actions) {
+            MaterialAlertDialogBuilder(this).setTitle("Kutu İşlemleri")
+                .setItems(arrayOf("Kutu konumunu düzenle","Boş kutuyu sil")) { _,which -> if(which==0) editBox(id) else deleteBox(id) }.show()
         }
-        val actions=section("Kutu işlemleri","Ürün ekleyin veya kutu ayarlarını yönetin.")
-        button("＋ Ürün ekle",actions) { itemForm(id,null) }
-        button("QR etiketi göster / paylaş",actions,secondary=true) { qrLabel(id,title,location) }
-        button("Kutu konumunu düzenle",actions,secondary=true) { editBox(id) }
-        button("Boş kutuyu sil",actions,secondary=true,danger=true) { deleteBox(id) }
         button("Ana sayfa",secondary=true) { home() }
-    }
-    private fun productCard(name:String,note:String,photo:String?,open:()->Unit) {
-        val card=MaterialCardView(this).apply {
-            radius=dp(16).toFloat(); cardElevation=dp(1).toFloat(); isClickable=true; isFocusable=true
-            contentDescription="$name, ürün detayını aç"; setOnClickListener { open() }
+        label("Ürünler",16)
+        val rows=db.readableDatabase.rawQuery("SELECT id,name FROM items WHERE box_id=? ORDER BY name",arrayOf(id.toString())).use { c ->
+            buildList { while(c.moveToNext()) {
+                val itemId=c.getLong(0); val name=c.getString(1)
+                add(Row(itemId,name,"$name, ürün detayını aç") { itemForm(id,itemId) })
+            } }
         }
-        val content=column().apply { setPadding(dp(16),dp(12),dp(16),dp(12)) }
-        photo?.let { content.addView(photoView(it,120)) }
-        content.addView(text(name,20))
-        if(note.isNotBlank()) content.addView(text(note))
-        card.addView(content); root.addView(card,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(12) })
+        list(shell,rows,"Bu kutu boş. Ürün Ekle ile başlayın.")
     }
     private fun itemForm(boxId:Long, itemId:Long?, state:Bundle?=null) {
         cleanDraft(); page="item"; selectedBox=boxId; editingItem=itemId
@@ -337,27 +378,26 @@ class MainActivity: AppCompatActivity() {
     }
     private fun searchItems(q:String) {
         page="search"
-        screen("Arama sonuçları")
+        val shell=listScreen("Arama sonuçları")
         searchControls(q)
         button("Ana sayfa",secondary=true) { home(searchInput?.text?.toString() ?: q) }
-        if(q.isBlank()){label("Aranacak ürün adını yaz.");return}
+        if(q.isBlank()){list(shell,emptyList(),"Aranacak ürün adını yaz.");return}
         val key=q.trim().lowercase(java.util.Locale.forLanguageTag("tr"))
-        var found=0
+        val rows=mutableListOf<Row>()
         db.readableDatabase.rawQuery("SELECT i.name,i.id,b.id,b.name,b.room,b.cupboard,b.shelf,i.note,i.photo FROM items i JOIN boxes b ON b.id=i.box_id ORDER BY i.name",null).use { c ->
             while(c.moveToNext()) {
                 val text=listOf(c.getString(0),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)).joinToString(" ")
                 if(!text.lowercase(java.util.Locale.forLanguageTag("tr")).contains(key)) continue
-                found++
                 val id=c.getLong(2); val itemId=c.getLong(1)
-                val path=listOf(c.getString(4),c.getString(5),c.getString(6),c.getString(3)).filter { it.isNotBlank() }.joinToString(" → ")
-                productCard(c.getString(0),path,c.getString(8)) { itemForm(id,itemId) }
+                val name=c.getString(0)
+                rows.add(Row(itemId,name,"$name, ürün detayını aç") { itemForm(id,itemId) })
             }
         }
-        if(found==0) label("Ürün bulunamadı.")
+        list(shell,rows,"Ürün bulunamadı.")
     }
 
     private fun locationInput(hint:String, column:String, value:String, parents:()->Map<String,String>):AutoCompleteTextView {
-        val input=com.google.android.material.textfield.MaterialAutoCompleteTextView(this).apply { this.hint=hint; setText(value); threshold=1; setSingleLine(true) }
+        val input=com.google.android.material.textfield.MaterialAutoCompleteTextView(this).apply { this.hint=hint; setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyLarge); setText(value); threshold=1; setSingleLine(true) }
         fun refresh() {
             val filters=parents()
             val where=if(filters.isEmpty()) "" else " WHERE "+filters.keys.joinToString(" AND ") { "$it=?" }
@@ -368,9 +408,9 @@ class MainActivity: AppCompatActivity() {
         }
         input.setOnFocusChangeListener { _,hasFocus -> if(hasFocus) refresh() }
         input.setOnClickListener { refresh(); input.showDropDown() }
-        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint }
+        val container=TextInputLayout(this).apply { boxBackgroundMode=TextInputLayout.BOX_BACKGROUND_OUTLINE; this.hint=hint; setBoxCornerRadii(dp(12).toFloat(),dp(12).toFloat(),dp(12).toFloat(),dp(12).toFloat()) }
         container.addView(input,LinearLayout.LayoutParams(-1,-2))
-        root.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(14) }); return input
+        root.addView(container,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(8) }); return input
     }
     private fun editBox(id:Long,state:Bundle?=null) {
         val values=db.readableDatabase.rawQuery("SELECT name,room,cupboard,shelf FROM boxes WHERE id=?",arrayOf(id.toString())).use { c ->

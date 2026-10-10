@@ -36,7 +36,21 @@ class InventoryFlowTest {
     private fun press(a:MainActivity,text:String) { assertTrue(buttons(a).first { it.text.toString()==text }.performClick()) }
     private fun field(a:MainActivity,hint:String)=views(a.window.decorView).filterIsInstance<EditText>().first { it.hint.toString()==hint }
     private fun set(a:MainActivity,hint:String,value:String) { field(a,hint).setText(value) }
+    private fun layout(a:MainActivity) {
+        val content=a.findViewById<View>(android.R.id.content)
+        content.measure(View.MeasureSpec.makeMeasureSpec(content.width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(content.height,View.MeasureSpec.EXACTLY))
+        content.layout(content.left,content.top,content.right,content.bottom)
+    }
+    private fun openBox(a:MainActivity,name:String) {
+        layout(a)
+        assertTrue(views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="$name, kutu içeriğini aç" }.performClick())
+    }
+    private fun chooseOperation(scenario:ActivityScenario<MainActivity>,name:String) {
+        scenario.onActivity { press(it,"Kutu İşlemleri") }
+        onView(withText(name)).inRoot(isDialog()).perform(click())
+    }
     private fun openProduct(a:MainActivity,name:String) {
+        layout(a)
         val card=views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="$name, ürün detayını aç" }
         assertTrue(card.performClick())
     }
@@ -63,10 +77,12 @@ class InventoryFlowTest {
                 press(a,"＋ Yeni kutu"); press(a,"Kaydet")
                 Store(context).use { assertTrue(it.boxes().isEmpty()) }
                 set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
-                press(a,"Kutu konumunu düzenle")
+            }
+            chooseOperation(scenario,"Kutu konumunu düzenle")
+            scenario.onActivity { a ->
                 set(a,"Kutu",""); press(a,"Kaydet"); assertNotNull(field(a,"Kutu").error)
                 set(a,"Kutu","Test kutusu"); set(a,"Oda",""); set(a,"Dolap",""); set(a,"Raf",""); press(a,"Kaydet")
-                press(a,"＋ Ürün ekle"); set(a,"Ürün adı","İplik"); set(a,"Not / açıklama","Kırmızı")
+                press(a,"Ürün Ekle"); set(a,"Ürün adı","İplik"); set(a,"Not / açıklama","Kırmızı")
                 assertFalse(views(a.window.decorView).filterIsInstance<EditText>().any { it.hint.toString()=="Adet" })
                 assertFalse(buttons(a).any { it.text.toString().contains("1 ·") })
             }
@@ -74,8 +90,10 @@ class InventoryFlowTest {
             scenario.onActivity { a ->
                 assertEquals("İplik",field(a,"Ürün adı").text.toString())
                 press(a,"Kaydet")
+                layout(a)
                 val card=views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="İplik, ürün detayını aç" }
                 assertTrue(views(card).filterIsInstance<Button>().isEmpty())
+                assertEquals(listOf("İplik"),views(card).filterIsInstance<TextView>().map { it.text.toString() })
                 press(a,"Ana sayfa"); set(a,"Ürün, not veya konum ara...","iplik")
                 assertTrue(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
                 press(a,"Ara"); assertEquals("iplik",field(a,"Ürün, not veya konum ara...").text.toString())
@@ -99,7 +117,7 @@ class InventoryFlowTest {
         Intents.init()
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { a -> createBox(a); press(a,"＋ Ürün ekle"); set(a,"Ürün adı","Matkap") }
+                scenario.onActivity { a -> createBox(a); press(a,"Ürün Ekle"); set(a,"Ürün adı","Matkap") }
                 val source=File(context.filesDir,"manuals/kilavuz.pdf").apply { parentFile?.mkdirs(); writeText("%PDF-1.4\nTest manual\n%%EOF") }
                 val sourceUri=FileProvider.getUriForFile(context,"${context.packageName}.files",source)
                 intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent().setData(sourceUri)))
@@ -147,7 +165,7 @@ class InventoryFlowTest {
                 }
                 assertFalse(storage.file(second!!).exists())
                 source.delete()
-                scenario.onActivity { a -> press(a,"Boş kutuyu sil") }
+                chooseOperation(scenario,"Boş kutuyu sil")
                 // Opening the confirmation must not delete the box.
                 Store(context).use { assertEquals(2,it.boxes().size) }
                 onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
@@ -159,7 +177,7 @@ class InventoryFlowTest {
         Intents.init()
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { a -> createBox(a); press(a,"＋ Ürün ekle"); set(a,"Ürün adı","Kamera"); set(a,"Not / açıklama","Fotoğraf notu") }
+                scenario.onActivity { a -> createBox(a); press(a,"Ürün Ekle"); set(a,"Ürün adı","Kamera"); set(a,"Not / açıklama","Fotoğraf notu") }
                 val source=File(context.filesDir,"manuals/source.png").apply { parentFile?.mkdirs() }
                 val bitmap=android.graphics.Bitmap.createBitmap(8,8,android.graphics.Bitmap.Config.ARGB_8888)
                 source.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
@@ -168,7 +186,7 @@ class InventoryFlowTest {
                 scenario.onActivity { a -> press(a,"Galeriden fotoğraf seç") }
                 awaitDocument(scenario,"Fotoğraf seçildi ✓")
                 scenario.recreate()
-                scenario.onActivity { a -> press(a,"Kaydet"); press(a,"QR etiketi göster / paylaş") }
+                scenario.onActivity { a -> press(a,"Kaydet"); press(a,"QR Etiketi") }
                 onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
                 Store(context).use { store ->
                     store.readableDatabase.rawQuery("SELECT photo,note FROM items",null).use { c ->
@@ -204,7 +222,7 @@ class InventoryFlowTest {
             }
             intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent()))
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { a -> press(a,"Kutu"); openProduct(a,"Matkap"); press(a,"Aç") }
+                scenario.onActivity { a -> openBox(a,"Kutu"); openProduct(a,"Matkap"); press(a,"Aç") }
                 intended(hasAction(Intent.ACTION_VIEW))
             }
         } finally { Intents.release(); context.deleteDatabase("kutudepom.db"); file.delete() }
