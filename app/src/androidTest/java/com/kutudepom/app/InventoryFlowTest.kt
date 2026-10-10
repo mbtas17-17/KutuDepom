@@ -155,4 +155,43 @@ class InventoryFlowTest {
             }
         } finally { Intents.release(); context.deleteDatabase("kutudepom.db") }
     }
+    @Test fun photoQrAndDarkMaterialThemeRemainAvailable() {
+        context.deleteDatabase("kutudepom.db")
+        Intents.init()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { a -> createBox(a); press(a,"＋ Ürün ekle"); set(a,"Ürün adı","Kamera"); set(a,"Not / açıklama","Fotoğraf notu") }
+                val source=File(context.filesDir,"manuals/source.png").apply { parentFile?.mkdirs() }
+                val bitmap=android.graphics.Bitmap.createBitmap(8,8,android.graphics.Bitmap.Config.ARGB_8888)
+                source.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+                val uri=FileProvider.getUriForFile(context,"${context.packageName}.files",source)
+                intending(hasAction(Intent.ACTION_OPEN_DOCUMENT)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent().setData(uri)))
+                scenario.onActivity { a -> press(a,"Galeriden fotoğraf seç") }
+                awaitDocument(scenario,"Fotoğraf seçildi ✓")
+                scenario.recreate()
+                scenario.onActivity { a -> press(a,"Kaydet"); press(a,"QR etiketi göster / paylaş") }
+                onView(withId(android.R.id.button2)).perform(click())
+                Store(context).use { store ->
+                    store.readableDatabase.rawQuery("SELECT photo,note FROM items",null).use { c ->
+                        assertTrue(c.moveToFirst()); assertEquals("Fotoğraf notu",c.getString(1))
+                        assertTrue(File(context.filesDir,"photos/${c.getString(0)}").isFile)
+                    }
+                }
+                scenario.onActivity { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES) }
+                scenario.recreate()
+                scenario.onActivity { a ->
+                    assertEquals(android.content.res.Configuration.UI_MODE_NIGHT_YES,a.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                    assertTrue(buttons(a).all { it is com.google.android.material.button.MaterialButton })
+                    openProduct(a,"Kamera")
+                    assertTrue(field(a,"Ürün adı") is com.google.android.material.textfield.TextInputEditText)
+                    press(a,"Geri")
+                }
+                source.delete()
+            }
+        } finally {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) }
+            Intents.release(); context.deleteDatabase("kutudepom.db")
+        }
+    }
+
 }

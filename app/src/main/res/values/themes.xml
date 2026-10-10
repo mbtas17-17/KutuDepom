@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.KutuDepom" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.KutuDepom.Base" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">#286B5B</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorPrimaryContainer">#ABEED7</item>
@@ -11,9 +11,9 @@
         <item name="colorOnSurfaceVariant">#414943</item>
         <item name="colorOutline">#717972</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:statusBarColor">#F7FBF7</item>
         <item name="android:navigationBarColor">#F7FBF7</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <style name="Theme.KutuDepom" parent="Theme.KutuDepom.Base" />
 </resources>

@@ -34,8 +34,13 @@ jobs:
           name: verification-reports
           path: app/build/reports/
   database-tests:
+    name: Android tests (API ${{ matrix.api }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -50,12 +55,12 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api }}
           arch: x86_64
           script: ./gradlew --no-daemon connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: database-test-reports
+          name: database-test-reports-API-${{ matrix.api }}
           path: app/build/reports/androidTests/
 

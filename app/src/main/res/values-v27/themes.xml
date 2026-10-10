@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.KutuDepom" parent="Theme.KutuDepom.Base">
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>
