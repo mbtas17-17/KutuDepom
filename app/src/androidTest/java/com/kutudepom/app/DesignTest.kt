@@ -44,6 +44,7 @@ class DesignTest {
                     assertEquals("Çalışma odası → Mavi dolap → Üst raf",labels[1].text.toString())
                     assertEquals(2,labels[0].maxLines)
                     assertTrue(labels[1].top>=labels[0].bottom)
+                    capture(a,"home-light")
                     search=views(a.window.decorView).filterIsInstance<EditText>().single()
                     search!!.setText("kırmızı")
                     assertSame(search,views(a.window.decorView).filterIsInstance<EditText>().single())
@@ -54,7 +55,7 @@ class DesignTest {
                     search!!.setText(""); assertEquals(2,list.adapter!!.itemCount)
                 }
                 // Change order, not the permanent ID, and reload without modifying any name.
-                Store(context).use { it.writableDatabase.execSQL("UPDATE boxes SET room='Z oda' WHERE id=1") }
+                Store(context).use { it.writableDatabase.execSQL("UPDATE boxes SET room='Ş oda' WHERE id=1") }
                 scenario.recreate()
                 scenario.onActivity { a ->
                     val list=a.findViewById<RecyclerView>(R.id.inventory_list)
@@ -64,6 +65,14 @@ class DesignTest {
                 }
             }
         } finally { context.deleteDatabase("kutudepom.db") }
+    }
+    private fun capture(a:MainActivity,name:String) {
+        val v=a.window.decorView
+        val bitmap=android.graphics.Bitmap.createBitmap(v.width,v.height,android.graphics.Bitmap.Config.ARGB_8888)
+        v.draw(android.graphics.Canvas(bitmap))
+        val file=java.io.File(context.getExternalFilesDir(null),"previews/$name.png").apply { parentFile?.mkdirs() }
+        file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
+        bitmap.recycle()
     }
     @Test fun pastelIconContrastInBothThemes() {
         val pairs=listOf(R.color.pastel_green to R.color.ink_green,R.color.pastel_blue to R.color.ink_blue,R.color.pastel_purple to R.color.ink_purple,R.color.pastel_orange to R.color.ink_orange)

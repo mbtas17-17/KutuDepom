@@ -68,6 +68,7 @@ jobs:
             adb shell wm density ${{ matrix.density }}
             adb shell settings put secure show_ime_with_hard_keyboard 1
             ./gradlew --no-daemon connectedDebugAndroidTest
+            adb pull /sdcard/Android/data/com.kutudepom.app/files/previews ui-previews
       - name: Show Android test failures
         if: failure()
         run: |
@@ -86,3 +87,8 @@ jobs:
           name: database-test-reports-API-${{ matrix.api }}
           path: app/build/reports/androidTests/
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-previews-API-${{ matrix.api }}
+          path: ui-previews/
