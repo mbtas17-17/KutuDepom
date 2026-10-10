@@ -40,7 +40,7 @@ Kartlar 16 sp Material 3 metin, 14 dp köşe ve kompakt boşluklar kullanır. Ku
 
 ## Manuel ZIP yedekleri (0.5.0)
 
-Ana ekrandaki **Yedekle** sistem dosya kaydetme ekranını açar. Tarih/saat içeren ZIP dosyasında SQL ile oluşturulan tutarlı SQLite anlık görüntüsü, ilişkili fotoğraflar ve tüm kullanım kılavuzu belgeleri ile sürüm/boyut/SHA-256 bilgili manifest bulunur. WAL dosyasındaki kayıtlar SQL üzerinden kopyalanır. İşlem dosya yazımı tamamlanmadan başarılı sayılmaz. İnternet veya genel depolama izni gerekmez.
+Ana ekrandaki **Yedekle** sistem dosya kaydetme ekranını açar. Tarih/saat içeren ZIP dosyasında SQL ile oluşturulan tutarlı SQLite anlık görüntüsü, ilişkili fotoğraflar ve tüm kullanım kılavuzu belgeleri ile sürüm/boyut/SHA-256 bilgili manifest bulunur. WAL dosyasındaki kayıtlar SQL üzerinden kopyalanır. İşlem dosya yazımı tamamlanmadan başarılı sayılmaz. İnternet veya genel depolama izni gerekmez. Android otomatik bulut yedeklemesi ve cihaz aktarımı kapalıdır; bu özellik yalnızca kullanıcının başlattığı manuel işlemleri yapar.
 
 **İçe Aktar** seçilen ZIP'i önce özel geçici alanda doğrular; mevcut veriye dokunmadan açık onay ister. Onaydan sonra yeni dosyalar benzersiz adlarla hazırlanıp diske yazılır; kutu/ürün/belge kayıtları tek SQLite işlemiyle değiştirilir. Hata olursa işlem geri alınır ve yalnızca yeni hazırlanmış dosyalar temizlenir. Kutu/ürün/belge kimlikleri ve otomatik kimlik sırası korunur; QR etiketleri geçerlidir. Açıklama, konum, fotoğraf ve belge içeriği korunur. Veritabanı sürümü hâlâ 3'tür.
 

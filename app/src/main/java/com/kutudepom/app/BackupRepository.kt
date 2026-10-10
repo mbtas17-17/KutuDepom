@@ -252,7 +252,7 @@ class BackupRepository(private val context:Context) {
                     (if(parts[0]=="photos") photos else manuals)[parts[1]]=destination.name
                 }
                 created.mapNotNull { it.parentFile }.distinct().forEach { dir ->
-                    val fd=Os.open(dir.path,OsConstants.O_RDONLY or OsConstants.O_DIRECTORY,0)
+                    val fd=Os.open(dir.path,OsConstants.O_RDONLY,0)
                     try { Os.fsync(fd) } finally { Os.close(fd) }
                 }
                 Store(context).use { targetStore ->
