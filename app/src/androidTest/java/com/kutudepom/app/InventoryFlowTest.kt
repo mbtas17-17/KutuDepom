@@ -66,7 +66,7 @@ class InventoryFlowTest {
         assertTrue(card.performClick())
     }
     private fun createBox(a:MainActivity) {
-        press(a,"＋ Yeni kutu"); set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
+        press(a,"Yeni Kutu"); set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
     }
     private fun awaitDocument(scenario:ActivityScenario<MainActivity>,name:String) {
         val deadline=System.currentTimeMillis()+10000
@@ -81,11 +81,11 @@ class InventoryFlowTest {
         context.deleteDatabase("kutudepom.db")
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { a ->
-                assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                assertFalse(buttons(a).any { it.text.toString()=="Ara" })
                 set(a,"Ürün, not veya konum ara...","   ")
-                assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                assertFalse(buttons(a).any { it.text.toString()=="Ara" })
                 assertFalse(buttons(a).any { it.text.toString()=="Oda → dolap → raf → kutu" })
-                press(a,"＋ Yeni kutu"); press(a,"Kaydet")
+                press(a,"Yeni Kutu"); press(a,"Kaydet")
                 Store(context).use { assertTrue(it.boxes().isEmpty()) }
                 set(a,"Kutu adı (örn. Kutu 1)","Test kutusu"); press(a,"Kaydet")
             }
@@ -104,15 +104,15 @@ class InventoryFlowTest {
                 layout(a)
                 val card=views(a.window.decorView).filterIsInstance<MaterialCardView>().first { it.contentDescription=="İplik, ürün detayını aç" }
                 assertTrue(views(card).filterIsInstance<Button>().isEmpty())
-                assertEquals(listOf("İplik"),views(card).filterIsInstance<TextView>().map { it.text.toString() })
+                assertEquals(listOf("İplik"),views(card).filterIsInstance<TextView>().map { it.text.toString() }.filter { it.isNotBlank() })
                 press(a,"Ana sayfa"); set(a,"Ürün, not veya konum ara...","iplik")
-                assertTrue(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
-                press(a,"Ara"); assertEquals("iplik",field(a,"Ürün, not veya konum ara...").text.toString())
+                assertFalse(buttons(a).any { it.text.toString()=="Ara" })
+                assertEquals("iplik",field(a,"Ürün, not veya konum ara...").text.toString())
                 openProduct(a,"İplik"); press(a,"Geri"); press(a,"Ana sayfa")
-                set(a,"Ürün, not veya konum ara...","Kırmızı"); press(a,"Ara")
-                set(a,"Ürün, not veya konum ara...","bulunmayan"); press(a,"Ara")
+                set(a,"Ürün, not veya konum ara...","Kırmızı")
+                set(a,"Ürün, not veya konum ara...","bulunmayan")
                 assertTrue(views(a.window.decorView).filterIsInstance<TextView>().any { it.text.toString()=="Ürün bulunamadı." })
-                set(a,"Ürün, not veya konum ara...",""); assertFalse(buttons(a).first { it.text.toString()=="Ara" }.isEnabled)
+                set(a,"Ürün, not veya konum ara...",""); assertFalse(buttons(a).any { it.text.toString()=="Ara" })
             }
             Store(context).use { store ->
                 assertEquals("Test kutusu",store.boxes().single().second)

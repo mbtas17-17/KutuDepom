@@ -63,7 +63,7 @@ class ListUsabilityTest {
                 InstrumentationRegistry.getInstrumentation().waitForIdleSync()
                 scenario.onActivity { a ->
                     assertEquals(headerBounds,rect(a.findViewById(R.id.fixed_header)))
-                    listOf("＋ Yeni kutu","▣ QR kod tara","Ara").forEach { name -> rect(views(a.window.decorView).filterIsInstance<MaterialButton>().first { it.text.toString()==name }) }
+                    listOf("Yeni Kutu","QR Kod Tara").forEach { name -> rect(views(a.window.decorView).filterIsInstance<MaterialButton>().first { it.text.toString()==name }) }
                     val list=a.findViewById<RecyclerView>(R.id.inventory_list)
                     assertTrue((list.layoutManager as LinearLayoutManager).findLastVisibleItemPosition()>=99)
                     list.scrollToPosition(0)
@@ -85,7 +85,7 @@ class ListUsabilityTest {
                     val list=a.findViewById<RecyclerView>(R.id.inventory_list)
                     assertTrue((list.layoutManager as LinearLayoutManager).findLastVisibleItemPosition()>=99)
                     val card=list.findViewHolderForAdapterPosition(99)!!.itemView as MaterialCardView
-                    assertEquals(listOf("Ürün 099"),views(card).filterIsInstance<TextView>().map { it.text.toString() })
+                    assertEquals(listOf("Ürün 099"),views(card).filterIsInstance<TextView>().map { it.text.toString() }.filter { it.isNotBlank() })
                     card.performClick()
                     assertEquals("Çığ, öğütücü, şişe, İğne.\n".repeat(100),field(a,"Not / açıklama").text.toString())
                 }
@@ -102,7 +102,14 @@ class ListUsabilityTest {
         context.deleteDatabase("kutudepom.db")
         try {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-                scenario.onActivity { a -> press(a,"＋ Yeni kutu"); field(a,"Kutu adı (örn. Kutu 1)").setText("Klavye kutusu") }
+                showKeyboard(scenario,"Ürün, not veya konum ara...")
+                scenario.onActivity { a ->
+                    val search=field(a,"Ürün, not veya konum ara..."); rect(search)
+                    search.setText("eşleşmeyen arama")
+                    assertSame(search,field(a,"Ürün, not veya konum ara...")); rect(search)
+                    search.setText("")
+                    press(a,"Yeni Kutu"); field(a,"Kutu adı (örn. Kutu 1)").setText("Klavye kutusu")
+                }
                 showKeyboard(scenario,"Raf")
                 scenario.onActivity { a -> rect(field(a,"Raf")); press(a,"Kaydet"); press(a,"Ürün Ekle"); field(a,"Ürün adı").setText("Çalışma ürünü") }
                 showKeyboard(scenario,"Not / açıklama")
@@ -124,7 +131,7 @@ class ListUsabilityTest {
         val deadline=System.currentTimeMillis()+8000
         var visible=false
         while(!visible && System.currentTimeMillis()<deadline) {
-            scenario.onActivity { a -> visible=ViewCompat.getRootWindowInsets(a.findViewById(R.id.form_scroll))?.isVisible(WindowInsetsCompat.Type.ime())==true }
+            scenario.onActivity { a -> visible=ViewCompat.getRootWindowInsets(a.findViewById<View>(android.R.id.content))?.isVisible(WindowInsetsCompat.Type.ime())==true }
             if(!visible) Thread.sleep(100)
         }
         assertTrue("Actual soft keyboard should be visible",visible)
@@ -141,7 +148,7 @@ class ListUsabilityTest {
         }
         if(!reached) scenario.onActivity { a ->
             val edit=field(a,hint); val bounds=Rect(); edit.getGlobalVisibleRect(bounds)
-            val scroll=a.findViewById<View>(R.id.form_scroll)
+            val scroll=a.findViewById<View>(R.id.form_scroll) ?: a.findViewById<View>(R.id.fixed_header)
             println("Keyboard geometry: field=$hint height=${edit.height} visible=$bounds scrollHeight=${scroll.height} scrollY=${scroll.scrollY} insets=${ViewCompat.getRootWindowInsets(scroll)}")
         }
         assertTrue("Focused field must fit above keyboard: $hint",reached)

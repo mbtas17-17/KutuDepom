@@ -1,0 +1,12 @@
+<resources>
+    <color name="pastel_green">#243E30</color>
+    <color name="ink_green">#B6E9C6</color>
+    <color name="pastel_blue">#27394F</color>
+    <color name="ink_blue">#BED7FC</color>
+    <color name="pastel_purple">#3D304F</color>
+    <color name="ink_purple">#DEC9F6</color>
+    <color name="pastel_orange">#493727</color>
+    <color name="ink_orange">#F3D0AD</color>
+    <color name="card_surface">#1B2420</color>
+    <color name="card_outline">#344039</color>
+</resources>

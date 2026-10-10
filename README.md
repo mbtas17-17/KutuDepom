@@ -11,7 +11,7 @@ Kotlin ile Android 8.0 ve üzeri için çevrimdışı envanter uygulaması.
 - Tüm uygulama ekranlarında Material 3 bileşenleri, açık/koyu tema ve tutarlı form/kart/dialog tasarımı.
 - Kullanım Kılavuzu: PDF, DOC/DOCX, XLS/XLSX, PPT/PPTX, ODT/ODS/ODP, TXT, CSV, RTF, EPUB ve Markdown belgeleri. Çoklu seçim, özel cihaz içi depolama, listeleme, açma ve kaldırma (belge başına en fazla 50 MB).
 
-İlk kutuyu yalnızca adıyla oluşturabilir, isteğe bağlı konum bilgileri ekleyebilirsiniz. Ana ekran başlığı, yeni kutu/QR/aramanın kontrolleri sabittir; yalnızca kutu listesi kayar. Kutu ekranında Ürün Ekle, QR Etiketi ve Kutu İşlemleri sabit kalır; ürünler kalan yüksekliği kullanan bağımsız RecyclerView listesinde yalnızca adlarıyla gösterilir. Kutu düzenleme ve onaylı silme Kutu İşlemleri menüsündedir. Açıklamalar ürün detayında eksiksiz korunur. Boş aramada Ara düğmesi pasiftir; sonuç ekranından yeniden arama yapılabilir. Kamera izni yalnızca QR taraması için gerekir. İnternet bağlantısı gerekmez.
+İlk kutuyu yalnızca adıyla oluşturabilir, isteğe bağlı konum bilgileri ekleyebilirsiniz. Ana ekran başlığı, yeni kutu/QR/aramanın kontrolleri sabittir; yalnızca kutu listesi kayar. Kutu ekranında Ürün Ekle, QR Etiketi ve Kutu İşlemleri sabit kalır; ürünler kalan yüksekliği kullanan bağımsız RecyclerView listesinde yalnızca adlarıyla gösterilir. Kutu düzenleme ve onaylı silme Kutu İşlemleri menüsündedir. Açıklamalar ürün detayında eksiksiz korunur. Arama yazdıkça ürün adı, not ve konum içinde çalışır; arama metni temizlendiğinde kutu listesi geri gelir. Ayrı Ara düğmesi yoktur. Kamera izni yalnızca QR taraması için gerekir. İnternet bağlantısı gerekmez.
 
 Önceki sürümün `boxes` ve `items` kayıtları veritabanı sürüm 3 geçişinde korunur; kutu/ürün kimlikleri ve `KUTUDEPOM:17` gibi eski QR etiketleri geçerlidir. QR etiketi yalnızca cihazdaki kutu kimliğini taşır; başka cihaza ürün verisi aktarmak veya bulut senkronizasyonu bu sürümün kapsamı dışındadır.
 
@@ -34,6 +34,6 @@ Android 10 (API 29, 320 × 569 dp küçük ekran) ve Android 15 (API 35, yaklaş
 
 Sürüm 3 geçişi mevcut tabloları silmez; yalnızca ilişkili belge tablosunu ekler. Belgeler FileProvider üzerinden geçici salt okuma yetkisiyle açılır.
 
-## Arayüz (0.3.0)
+## Arayüz (0.4.0)
 
-Kartlar 16 sp Material 3 metin, 12 dp köşe ve ortak boşluklar kullanır; formların tüm normal/konum alanları aynı 16 sp metin ve çerçeve biçimine sahiptir. Listeler geri dönüştürülen kartlarla gösterilir; fotoğraflar ve kullanım kılavuzları ürün detayında kullanılmaya devam eder. Formlar klavye ve sistem çubuklarının boşluklarına uyarlanır ve kaydırılabilir. Bu arayüz güncellemesi veritabanı sürümünü değiştirmez; mevcut SQLite kayıtları, notlar, dosyalar ve QR kimlikleri korunur.
+Kartlar 16 sp Material 3 metin, 14 dp köşe ve kompakt boşluklar kullanır. Kutunun gerçek adı ve isteğe bağlı konumu ayrı gösterilir. Paket ikonlarının yeşil/mavi/mor/turuncu pastel rengi kalıcı kutu ID’sinden seçilir; sıralama değişince renk değişmez. Yeni Kutu yeşil, QR Kod Tara mor ikonlu düğmelerdir. Açık/koyu tema için ayrı, kontrastlı paletler vardır; formların tüm normal/konum alanları aynı 16 sp metin ve çerçeve biçimine sahiptir. Listeler geri dönüştürülen kartlarla gösterilir; fotoğraflar ve kullanım kılavuzları ürün detayında kullanılmaya devam eder. Formlar klavye ve sistem çubuklarının boşluklarına uyarlanır ve kaydırılabilir. Bu arayüz güncellemesi veritabanı sürümünü değiştirmez; mevcut SQLite kayıtları, notlar, dosyalar ve QR kimlikleri korunur.
