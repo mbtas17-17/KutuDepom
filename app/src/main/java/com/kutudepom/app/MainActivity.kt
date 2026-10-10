@@ -69,6 +69,9 @@ class MainActivity: androidx.activity.ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         db=Store(this)
+        onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if(page=="home") finish() else home() }
+        })
         val state=savedInstanceState
         when(state?.getString("page")) {
             "item" -> itemForm(state.getLong("box"),state.getLong("item").takeIf { it>0 },state)
@@ -306,7 +309,5 @@ class MainActivity: androidx.activity.ComponentActivity() {
             },"QR etiketini paylaş"))
         }.show()
     }
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() { home() }
 }
 
