@@ -17,6 +17,7 @@ import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.Intents.intended
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
+import androidx.test.espresso.matcher.RootMatchers.isDialog
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -116,10 +117,8 @@ class InventoryFlowTest {
                 assertEquals(Intent.ACTION_VIEW,open.action); assertEquals("application/pdf",open.type)
                 assertTrue(open.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
                 assertEquals("%PDF-1.4\nTest manual\n%%EOF",context.contentResolver.openInputStream(open.data!!)!!.bufferedReader().use { it.readText() })
-                intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent()))
-                scenario.onActivity { a -> press(a,"Aç") }; intended(hasAction(Intent.ACTION_VIEW))
                 scenario.onActivity { a -> press(a,"Kaldır") }
-                onView(withId(android.R.id.button1)).perform(click())
+                onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
                 scenario.onActivity { a -> press(a,"Kaydet") }
                 Store(context).use { assertTrue(it.manuals(1).isEmpty()) }
                 assertFalse(storage.file(first!!).exists())
@@ -135,13 +134,13 @@ class InventoryFlowTest {
                     })
                 }
                 scenario.onActivity { a -> press(a,"Başka kutuya taşı") }
-                onView(withText("Hedef")).perform(click())
+                onView(withText("Hedef")).inRoot(isDialog()).perform(click())
                 Store(context).use { store ->
                     assertEquals(second!!.storedName,store.manuals(1).single().storedName)
                     assertEquals(2L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT box_id FROM items WHERE id=1",null))
                 }
                 scenario.onActivity { a -> openProduct(a,"Matkap"); press(a,"Ürünü sil") }
-                onView(withId(android.R.id.button1)).perform(click())
+                onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click())
                 Store(context).use { store ->
                     assertTrue(store.manuals(1).isEmpty())
                     assertEquals(0L,DatabaseUtils.longForQuery(store.readableDatabase,"SELECT COUNT(*) FROM items",null))
@@ -151,7 +150,7 @@ class InventoryFlowTest {
                 scenario.onActivity { a -> press(a,"Boş kutuyu sil") }
                 // Opening the confirmation must not delete the box.
                 Store(context).use { assertEquals(2,it.boxes().size) }
-                onView(withId(android.R.id.button2)).perform(click())
+                onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
             }
         } finally { Intents.release(); context.deleteDatabase("kutudepom.db") }
     }
@@ -170,7 +169,7 @@ class InventoryFlowTest {
                 awaitDocument(scenario,"Fotoğraf seçildi ✓")
                 scenario.recreate()
                 scenario.onActivity { a -> press(a,"Kaydet"); press(a,"QR etiketi göster / paylaş") }
-                onView(withId(android.R.id.button2)).perform(click())
+                onView(withId(android.R.id.button2)).inRoot(isDialog()).perform(click())
                 Store(context).use { store ->
                     store.readableDatabase.rawQuery("SELECT photo,note FROM items",null).use { c ->
                         assertTrue(c.moveToFirst()); assertEquals("Fotoğraf notu",c.getString(1))
@@ -192,6 +191,23 @@ class InventoryFlowTest {
             InstrumentationRegistry.getInstrumentation().runOnMainSync { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) }
             Intents.release(); context.deleteDatabase("kutudepom.db")
         }
+    }
+
+    @Test fun openDocumentButtonDispatchesReadOnlyViewerIntent() {
+        context.deleteDatabase("kutudepom.db")
+        Intents.init()
+        val file=File(context.filesDir,"manuals/dispatch-test.pdf").apply { parentFile?.mkdirs(); writeText("%PDF-1.4\n%%EOF") }
+        try {
+            Store(context).use { store ->
+                store.writableDatabase.execSQL("INSERT INTO boxes(name,room,cupboard,shelf) VALUES('Kutu','','','')")
+                store.saveItem(null,ContentValues().apply { put("name","Matkap"); put("qty",1); put("box_id",1); put("note","") },listOf(Manual(name="Kılavuz.pdf",storedName=file.name,mime="application/pdf",size=file.length())),emptySet())
+            }
+            intending(hasAction(Intent.ACTION_VIEW)).respondWith(Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,Intent()))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { a -> press(a,"Kutu"); openProduct(a,"Matkap"); press(a,"Aç") }
+                intended(hasAction(Intent.ACTION_VIEW))
+            }
+        } finally { Intents.release(); context.deleteDatabase("kutudepom.db"); file.delete() }
     }
 
 }
