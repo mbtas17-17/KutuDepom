@@ -17,6 +17,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -29,6 +30,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity: AppCompatActivity() {
+    private val backups by lazy { androidx.lifecycle.ViewModelProvider(this)[BackupViewModel::class.java] }
+    private var backupDialog:androidx.appcompat.app.AlertDialog?=null
+    private var backupProgress:TextView?=null
+    private var confirmationFor:File?=null
+    private val backupPicker=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri -> uri?.let { backups.export(it) } }
+    private val importPicker=registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> uri?.let { backups.inspect(it) } }
     private lateinit var db: Store
     private lateinit var root: LinearLayout
     private var selectedBox: Long?=null
@@ -114,7 +121,7 @@ class MainActivity: AppCompatActivity() {
         if(page=="newBox" || page=="editBox") out.putStringArrayList("boxDraft",ArrayList(boxInputs.map { it.text.toString() }))
         super.onSaveInstanceState(out)
     }
-    override fun onDestroy() { db.close(); super.onDestroy() }
+    override fun onDestroy() { backupDialog?.dismiss(); db.close(); super.onDestroy() }
     private val scanner=registerForActivityResult(ScanContract()) { result ->
         val id=result.contents?.let { BoxQr.decode(it) }
         if(id!=null) showBox(id) else if(result.contents!=null) toast("Bu QR kodu KutuDepom kutusu değil")
@@ -125,7 +132,7 @@ class MainActivity: AppCompatActivity() {
         db=Store(this)
         manualStorage=ManualStorage(this)
         onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if(page=="home") finish() else if(page=="item") showBox(selectedBox ?: 0) else home() }
+            override fun handleOnBackPressed() { if(backups.state.value.busy || backups.state.value.pending!=null) return; if(page=="home") finish() else if(page=="item") showBox(selectedBox ?: 0) else home() }
         })
         val state=savedInstanceState
         when(state?.getString("page")) {
@@ -136,8 +143,52 @@ class MainActivity: AppCompatActivity() {
             "search" -> searchItems(state.getString("query") ?: "")
             else -> home(state?.getString("query") ?: "")
         }
-        if(savedInstanceState==null) manualStorage.cleanOrphans(db.manualFiles())
-        File(filesDir,"photos").listFiles()?.filter { !db.photoInUse(it.name) && it.name!=currentPhoto }?.forEach { it.delete() }
+        if(!backups.state.value.busy) {
+            if(savedInstanceState==null) manualStorage.cleanOrphans(db.manualFiles())
+            File(filesDir,"photos").listFiles()?.filter { !db.photoInUse(it.name) && it.name!=currentPhoto }?.forEach { it.delete() }
+        }
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                backups.state.collect { state -> renderBackup(state) }
+            }
+        }
+    }
+    private fun renderBackup(state:BackupViewModel.State) {
+        if(state.busy) {
+            if(backupProgress==null) {
+                backupDialog?.dismiss(); confirmationFor=null
+                val body=column().apply { setPadding(dp(24),dp(16),dp(24),dp(16)) }
+                body.addView(com.google.android.material.progressindicator.CircularProgressIndicator(this).apply { isIndeterminate=true })
+                backupProgress=text(state.progress); body.addView(backupProgress)
+                backupDialog=MaterialAlertDialogBuilder(this).setTitle("Yedek işlemi").setView(body).setCancelable(false).show()
+            }
+            backupProgress?.text=state.progress
+        } else {
+            if(backupProgress!=null) { backupDialog?.dismiss(); backupDialog=null; backupProgress=null }
+            val prepared=state.pending
+            if(prepared!=null && confirmationFor!=prepared.directory) {
+                confirmationFor=prepared.directory
+                backupDialog=MaterialAlertDialogBuilder(this).setTitle("Yedeği içe aktar")
+                    .setMessage("Bu işlem mevcut kutu ve ürünlerinizi yedekteki verilerle değiştirecektir. Devam etmek istiyor musunuz?")
+                    .setPositiveButton("İçe Aktar") { _,_ -> confirmationFor=null; backups.restore() }
+                    .setNegativeButton("Vazgeç") { _,_ -> confirmationFor=null; backups.cancelImport() }
+                    .setOnCancelListener { confirmationFor=null; backups.cancelImport() }.show()
+            }
+            state.message?.let { message ->
+                if(state.restored) { cleanDraft(); currentPhoto=null; originalPhoto=null; editingItem=null; home() }
+                MaterialAlertDialogBuilder(this).setTitle(if(state.restored) "Geri yükleme tamamlandı" else "Yedek işlemi").setMessage(message).setPositiveButton("Tamam",null).show()
+                backups.acknowledge()
+            }
+        }
+    }
+    private fun backupActions() {
+        val actions=actionRow()
+        tintAction(rowButton("Yedekle",actions) {
+            if(importingManuals) toast("Belge kopyalama tamamlanana kadar bekleyin.") else backupPicker.launch(BackupRepository.defaultName())
+        },R.drawable.ic_backup,1)
+        tintAction(rowButton("İçe Aktar",actions) {
+            if(importingManuals) toast("Belge kopyalama tamamlanana kadar bekleyin.") else importPicker.launch(arrayOf("application/zip","application/x-zip-compressed","application/octet-stream"))
+        },R.drawable.ic_restore,3)
     }
     private fun toast(s:String)=Toast.makeText(this,s,Toast.LENGTH_LONG).show()
     private fun color(attr:Int)=MaterialColors.getColor(this,attr,"KutuDepom")
@@ -243,7 +294,7 @@ class MainActivity: AppCompatActivity() {
                 holder.icon.setImageResource(if(row.box) R.drawable.ic_package else R.drawable.ic_product)
                 holder.icon.imageTintList=ColorStateList.valueOf(foreground)
                 holder.icon.background=android.graphics.drawable.GradientDrawable().apply { setColor(background); cornerRadius=dp(10).toFloat() }
-                holder.card.contentDescription=row.description; holder.card.setOnClickListener { row.open() }
+                holder.card.contentDescription=row.description; holder.card.setOnClickListener { if(!backups.state.value.busy && backups.state.value.pending==null) row.open() }
             }
         }
         recycler.adapter=adapter; shell.addView(recycler,LinearLayout.LayoutParams(-1,0,1f))
@@ -283,7 +334,7 @@ class MainActivity: AppCompatActivity() {
                 backgroundTintList=ColorStateList.valueOf(color(com.google.android.material.R.attr.colorError))
                 setTextColor(color(com.google.android.material.R.attr.colorOnError))
             }
-            setOnClickListener { click() }
+            setOnClickListener { if(!backups.state.value.busy && backups.state.value.pending==null) click() }
         }
         parent.addView(button,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(4) })
         return button
@@ -358,6 +409,7 @@ class MainActivity: AppCompatActivity() {
         val actions=actionRow()
         tintAction(rowButton("Yeni Kutu",actions) { newBox() },R.drawable.ic_add,0)
         tintAction(rowButton("QR Kod Tara",actions) { scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Kutunun QR kodunu okut").setBeepEnabled(false)) },R.drawable.ic_qr,2)
+        backupActions()
         var update:(List<Row>,String)->Unit = { _,_ -> }
         var caption:TextView?=null
         fun refresh(q:String) {

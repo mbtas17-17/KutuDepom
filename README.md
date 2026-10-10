@@ -37,3 +37,17 @@ Sürüm 3 geçişi mevcut tabloları silmez; yalnızca ilişkili belge tablosunu
 ## Arayüz (0.4.0)
 
 Kartlar 16 sp Material 3 metin, 14 dp köşe ve kompakt boşluklar kullanır. Kutunun gerçek adı ve isteğe bağlı konumu ayrı gösterilir. Paket ikonlarının yeşil/mavi/mor/turuncu pastel rengi kalıcı kutu ID’sinden seçilir; sıralama değişince renk değişmez. Yeni Kutu yeşil, QR Kod Tara mor ikonlu düğmelerdir. Açık/koyu tema için ayrı, kontrastlı paletler vardır; formların tüm normal/konum alanları aynı 16 sp metin ve çerçeve biçimine sahiptir. Listeler geri dönüştürülen kartlarla gösterilir; fotoğraflar ve kullanım kılavuzları ürün detayında kullanılmaya devam eder. Formlar klavye ve sistem çubuklarının boşluklarına uyarlanır ve kaydırılabilir. Bu arayüz güncellemesi veritabanı sürümünü değiştirmez; mevcut SQLite kayıtları, notlar, dosyalar ve QR kimlikleri korunur.
+
+## Manuel ZIP yedekleri (0.5.0)
+
+Ana ekrandaki **Yedekle** sistem dosya kaydetme ekranını açar. Tarih/saat içeren ZIP dosyasında SQL ile oluşturulan tutarlı SQLite anlık görüntüsü, ilişkili fotoğraflar ve tüm kullanım kılavuzu belgeleri ile sürüm/boyut/SHA-256 bilgili manifest bulunur. WAL dosyasındaki kayıtlar SQL üzerinden kopyalanır. İşlem dosya yazımı tamamlanmadan başarılı sayılmaz. İnternet veya genel depolama izni gerekmez.
+
+**İçe Aktar** seçilen ZIP'i önce özel geçici alanda doğrular; mevcut veriye dokunmadan açık onay ister. Onaydan sonra yeni dosyalar benzersiz adlarla hazırlanıp diske yazılır; kutu/ürün/belge kayıtları tek SQLite işlemiyle değiştirilir. Hata olursa işlem geri alınır ve yalnızca yeni hazırlanmış dosyalar temizlenir. Kutu/ürün/belge kimlikleri ve otomatik kimlik sırası korunur; QR etiketleri geçerlidir. Açıklama, konum, fotoğraf ve belge içeriği korunur. Veritabanı sürümü hâlâ 3'tür.
+
+Yedek biçimi sürüm 1'dir. CRC, dosya boyutu, SHA-256, gerekli dosyalar, SQLite bütünlüğü ve ilişkiler kontrol edilir. Mutlak/üst dizin/backslash/yinelenen yollar kabul edilmez. Toplam ZIP/açılmış içerik sınırı 512 MB, dosya sayısı 5000; veritabanı 64 MB, fotoğraf 15 MB, belge 50 MB ile sınırlıdır. ZIP yedekleri şifreli değildir; dosyayı güvendiğiniz bir konumda saklayın.
+
+### Mevcut uygulamanın üzerine kurulum ve imza
+
+Paket kimliği `com.kutudepom.app` korunur, sürüm kodu 5'tir. Üzerine kurulum için **kurulu APK ile aynı özel imza anahtarı** gerekir. Önceki Actions sürümleri geçici debug anahtarını saklamadığı için 0.3 ve 0.4 APK sertifikaları farklıdır; özel anahtar APK'dan geri çıkarılamaz. Uygulamayı kaldırmak çözüm değildir ve yerel verileri riske atar.
+
+Özgün anahtar mevcutsa depo Actions secrets alanında `KUTUDEPOM_KEYSTORE_BASE64`, `KUTUDEPOM_STORE_PASSWORD`, `KUTUDEPOM_KEY_ALIAS`, `KUTUDEPOM_KEY_PASSWORD` tanımlanır. Anahtar depoya veya artifact'e yüklenmez. CI sertifikayı önceki 0.4.0 APK'sının SHA-256 değeriyle kontrol eder. Başka özgün bir sürüm için beklenen sertifika `KUTUDEPOM_EXPECTED_SIGNER_SHA256` Actions variable olarak belirtilebilir. Eşleşen anahtarla `KutuDepom-APK` üretilir; anahtar yoksa yalnızca **KutuDepom-TEST-APK** yayımlanır ve bu dosya 0.4 üzerine kurulabilir güncelleme olarak sunulmaz.
