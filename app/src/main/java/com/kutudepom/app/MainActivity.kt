@@ -121,6 +121,7 @@ class MainActivity: AppCompatActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window,false)
         db=Store(this)
         manualStorage=ManualStorage(this)
         onBackPressedDispatcher.addCallback(this,object:androidx.activity.OnBackPressedCallback(true) {
@@ -156,7 +157,17 @@ class MainActivity: AppCompatActivity() {
     private fun screen(title:String) {
         root=column().apply { setPadding(dp(12),dp(12),dp(12),dp(16)) }
         val scroll=ScrollView(this).apply { id=R.id.form_scroll; addView(root); isFillViewport=true }
-        install(scroll)
+        // Insets belong to the outer frame so ScrollView sees the actual available height.
+        val frame=FrameLayout(this).apply { addView(scroll,FrameLayout.LayoutParams(-1,-1)) }
+        install(frame)
+        scroll.viewTreeObserver.addOnGlobalLayoutListener {
+            val focused=root.findFocus()
+            if(focused is EditText) {
+                val bounds=android.graphics.Rect(); focused.getDrawingRect(bounds)
+                root.offsetDescendantRectToMyCoords(focused,bounds)
+                scroll.requestChildRectangleOnScreen(root,bounds,true)
+            }
+        }
         label(title,20)
     }
     private fun listScreen(title:String):LinearLayout {
@@ -197,7 +208,8 @@ class MainActivity: AppCompatActivity() {
         shell.addView(recycler,LinearLayout.LayoutParams(-1,0,1f))
     }
     private fun actionRow():LinearLayout=LinearLayout(this).apply {
-        orientation=LinearLayout.HORIZONTAL; root.addView(this,LinearLayout.LayoutParams(-1,-2))
+        orientation=LinearLayout.HORIZONTAL; isBaselineAligned=false; gravity=Gravity.CENTER_VERTICAL
+        root.addView(this,LinearLayout.LayoutParams(-1,-2))
     }
     private fun rowButton(s:String,row:LinearLayout,click:()->Unit)=button(s,row,secondary=true,click=click).apply {
         layoutParams=LinearLayout.LayoutParams(0,dp(56),1f).apply { marginEnd=dp(4) }
@@ -337,7 +349,7 @@ class MainActivity: AppCompatActivity() {
         val name=input("Ürün adı",state?.getString("draftName") ?: oldName); nameInput=name
         val note=input("Not / açıklama",state?.getString("draftNote") ?: oldNote,multiline=true); noteInput=note
         if(state!=null) currentPhoto=state.getString("photo")
-        photoLabel=MaterialTextView(this).apply { text=if(currentPhoto==null) "Fotoğraf yok" else "Fotoğraf seçildi ✓" }; root.addView(photoLabel)
+        photoLabel=text(if(currentPhoto==null) "Fotoğraf yok" else "Fotoğraf seçildi ✓"); root.addView(photoLabel)
         currentPhoto?.let { showPhoto(it) }
         button("Galeriden fotoğraf seç") { photoPicker.launch(arrayOf("image/*")) }
         button("Fotoğrafı kaldır") { cleanDraftPhoto(); currentPhoto=null; photoLabel?.text="Fotoğraf yok" }

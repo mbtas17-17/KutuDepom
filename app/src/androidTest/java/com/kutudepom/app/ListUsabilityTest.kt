@@ -139,6 +139,11 @@ class ListUsabilityTest {
             }
             if(!reached) Thread.sleep(100)
         }
-        assertTrue("Focused field must fit above keyboard",reached)
+        if(!reached) scenario.onActivity { a ->
+            val edit=field(a,hint); val bounds=Rect(); edit.getGlobalVisibleRect(bounds)
+            val scroll=a.findViewById<View>(R.id.form_scroll)
+            println("Keyboard geometry: field=$hint height=${edit.height} visible=$bounds scrollHeight=${scroll.height} scrollY=${scroll.scrollY} insets=${ViewCompat.getRootWindowInsets(scroll)}")
+        }
+        assertTrue("Focused field must fit above keyboard: $hint",reached)
     }
 }
